@@ -42,7 +42,7 @@ jobs:
           r-version: '4.4.0'
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libpq-dev
+        run: sudo apt-get update && sudo apt-get install -y libpq-dev libcurl4-openssl-dev
 
       - name: Restore R package library
         run: Rscript -e 'install.packages("renv"); renv::restore()'
