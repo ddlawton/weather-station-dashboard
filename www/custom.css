@@ -1,0 +1,407 @@
+/* ==============================================================================
+   custom.css
+   Additional custom styles for Weather Station Dashboard
+   ============================================================================== */
+
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* ==============================================================================
+   COLOR VARIABLES
+   ============================================================================== */
+
+:root {
+  /* Primary Metric Colors */
+  --color-temperature: #E63946;
+  --color-humidity: #457B9D;
+  --color-rainfall: #1D3557;
+  --color-wind: #2A9D8F;
+  --color-lightning: #F4A261;
+  --color-pressure: #6C757D;
+  
+  /* Alert Colors */
+  --color-danger: #DC3545;
+  --color-warning: #FFC107;
+  --color-info: #17A2B8;
+  --color-success: #28A745;
+  
+  /* Neutral Colors */
+  --color-background: #F4F6F9;
+  --color-card-bg: #FFFFFF;
+  --color-text-primary: #212529;
+  --color-text-secondary: #6C757D;
+  --color-border: #DEE2E6;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+/* ==============================================================================
+   ANIMATIONS
+   ============================================================================== */
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ==============================================================================
+   VALUE BOX ENHANCEMENTS
+   ============================================================================== */
+
+.weather-value-box {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.weather-value-box.alert-active {
+  animation: pulse 2s infinite;
+}
+
+.value-box-value {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Temperature color gradient effect */
+.weather-value-box.temperature {
+  background: linear-gradient(135deg, #E63946 0%, #C72B39 100%);
+}
+
+.weather-value-box.humidity {
+  background: linear-gradient(135deg, #457B9D 0%, #3A6A8A 100%);
+}
+
+.weather-value-box.wind {
+  background: linear-gradient(135deg, #2A9D8F 0%, #238579 100%);
+}
+
+.weather-value-box.rain {
+  background: linear-gradient(135deg, #1D3557 0%, #152844 100%);
+}
+
+.weather-value-box.lightning {
+  background: linear-gradient(135deg, #F4A261 0%, #E08E4C 100%);
+}
+
+.weather-value-box.pressure {
+  background: linear-gradient(135deg, #6C757D 0%, #5A6268 100%);
+}
+
+/* ==============================================================================
+   CHART CONTAINERS
+   ============================================================================== */
+
+.chart-container {
+  background: var(--color-card-bg);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow-md);
+  transition: box-shadow 0.2s ease;
+}
+
+.chart-container:hover {
+  box-shadow: var(--shadow-lg);
+}
+
+.chart-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chart-title .fa, .chart-title .fas {
+  opacity: 0.7;
+}
+
+/* ==============================================================================
+   ALERT STYLING
+   ============================================================================== */
+
+.alert-banner {
+  animation: slideIn 0.3s ease-out;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.alert-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.alert-item.alert-danger {
+  background: rgba(220, 53, 69, 0.15);
+  color: #A71D2A;
+}
+
+.alert-item.alert-warning {
+  background: rgba(255, 193, 7, 0.25);
+  color: #856404;
+}
+
+.alert-item .fa, .alert-item .fas {
+  font-size: 0.95em;
+}
+
+/* ==============================================================================
+   CONTROL PANEL
+   ============================================================================== */
+
+.dashboard-controls {
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.dashboard-controls .form-group {
+  margin-bottom: 0;
+}
+
+.dashboard-controls label {
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  font-size: 1rem;
+}
+
+.dashboard-controls .form-control {
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dashboard-controls .form-control:focus {
+  border-color: var(--color-humidity);
+  box-shadow: 0 0 0 3px rgba(69, 123, 157, 0.15);
+}
+
+/* ==============================================================================
+   BUTTONS
+   ============================================================================== */
+
+.btn {
+  border-radius: 6px;
+  font-weight: 500;
+  padding: 8px 16px;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background-color: var(--color-humidity);
+  border-color: var(--color-humidity);
+}
+
+.btn-primary:hover {
+  background-color: #3A6A8A;
+  border-color: #3A6A8A;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-secondary {
+  background-color: var(--color-text-secondary);
+  border-color: var(--color-text-secondary);
+  color: white;
+}
+
+.btn-secondary:hover {
+  background-color: #5A6268;
+  border-color: #5A6268;
+}
+
+/* ==============================================================================
+   SIDEBAR ENHANCEMENTS
+   ============================================================================== */
+
+.main-sidebar {
+  background: linear-gradient(180deg, #1E2A38 0%, #2C3E50 100%);
+}
+
+.sidebar-menu > li > a {
+  border-left: 3px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.sidebar-menu > li.active > a,
+.sidebar-menu > li > a:hover {
+  border-left-color: var(--color-wind);
+  background: rgba(42, 157, 143, 0.1);
+}
+
+.sidebar-menu .badge {
+  font-size: 0.7rem;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+
+/* ==============================================================================
+   COMING SOON PANEL
+   ============================================================================== */
+
+.coming-soon-panel {
+  background: linear-gradient(135deg, #F8F9FA 0%, #E9ECEF 100%);
+  border: 2px dashed var(--color-border);
+  border-radius: 16px;
+  padding: 80px 40px;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.coming-soon-panel:hover {
+  border-color: var(--color-humidity);
+  transform: scale(1.01);
+}
+
+.coming-soon-panel .icon {
+  font-size: 4rem;
+  color: #ADB5BD;
+  margin-bottom: 24px;
+}
+
+.coming-soon-panel h3 {
+  color: var(--color-text-primary);
+  margin-bottom: 12px;
+}
+
+.coming-soon-panel p {
+  color: var(--color-text-secondary);
+  font-size: 1.05rem;
+  max-width: 500px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+/* ==============================================================================
+   STATION INFO PANEL
+   ============================================================================== */
+
+.station-info-panel {
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.station-info-panel h5 {
+  color: var(--color-text-primary);
+  margin-bottom: 15px;
+  font-weight: 600;
+}
+
+.station-info-panel hr {
+  border-color: var(--color-border);
+  margin: 12px 0;
+}
+
+.station-info-panel p {
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+
+.station-info-panel strong {
+  color: var(--color-text-secondary);
+}
+
+/* ==============================================================================
+   LOADING SPINNERS
+   ============================================================================== */
+
+.shiny-spinner-output-container {
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ==============================================================================
+   RESPONSIVE ADJUSTMENTS
+   ============================================================================== */
+
+@media (max-width: 768px) {
+  .weather-value-box {
+    padding: 15px;
+  }
+  
+  .value-box-value {
+    font-size: 2rem;
+  }
+  
+  .value-box-icon {
+    font-size: 2rem;
+  }
+  
+  .dashboard-controls {
+    padding: 15px;
+  }
+  
+  .coming-soon-panel {
+    padding: 40px 20px;
+  }
+  
+  .coming-soon-panel .icon {
+    font-size: 3rem;
+  }
+}
+
+/* ==============================================================================
+   DARK MODE SUPPORT (Future)
+   ============================================================================== */
+
+@media (prefers-color-scheme: dark) {
+  /* 
+   * Dark mode styles can be added here for future enhancement
+   * Currently using light theme only
+   */
+}
+
+/* ==============================================================================
+   PRINT STYLES
+   ============================================================================== */
+
+@media print {
+  .main-sidebar,
+  .main-header,
+  .dashboard-controls,
+  .btn {
+    display: none !important;
+  }
+  
+  .content-wrapper {
+    margin-left: 0 !important;
+    padding: 0 !important;
+  }
+  
+  .weather-value-box {
+    break-inside: avoid;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}

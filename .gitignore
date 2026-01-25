@@ -1,0 +1,44 @@
+# R and RStudio
+.Rhistory
+.RData
+.Rproj.user/
+.Ruserdata
+
+# renv
+renv/library/
+renv/python/
+renv/staging/
+
+# Environment files
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Shiny app logs
+shiny-server.log
+
+# Python virtual environments
+venv/
+
+# Misc
+*.swp
+*.swo
+
+# Coverage reports
+coverage/
+
+# Jupyter Notebooks checkpoints
+.ipynb_checkpoints/
+
+# Docker
+*.pid
+
+# Ignore test output
+/tests/*.Rout
+/tests/*.Rout.save

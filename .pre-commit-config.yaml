@@ -1,0 +1,12 @@
+repos:
+  - repo: https://github.com/lorenzwalthert/precommit
+    rev: v0.4.3.9020
+    hooks:
+      - id: style-files
+        exclude: renv/.*
+      - id: parsable-R
+        exclude: renv/.*
+      - id: no-print-statement
+        exclude: renv/.*
+      - id: no-debug-statement
+        exclude: renv/.*
