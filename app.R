@@ -48,7 +48,7 @@ source("R/server_logic.R")
 
 # Create database connection pool
 # This is created once when the app starts and shared across all sessions
-db_pool <- create_db_pool(DB_CONFIG)
+db_pool <- create_db_pool(db_conf)
 
 # Ensure pool is closed when app stops
 onStop(function() {

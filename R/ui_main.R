@@ -84,7 +84,7 @@ build_dashboard_ui <- function() {
         hr(),
 
         # Controls in sidebar
-        dashboard_controls(TIME_WINDOWS),
+        dashboard_controls(time_windows),
         hr(),
 
         # Timezone display

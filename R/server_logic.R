@@ -90,7 +90,7 @@ build_server <- function(pool) {
       window_key <- input$time_window
       if (is.null(window_key)) window_key <- "24h"
 
-      hours <- TIME_WINDOWS[[window_key]]$hours
+      hours <- time_windows[[window_key]]$hours
 
       end_time <- Sys.time()
 
