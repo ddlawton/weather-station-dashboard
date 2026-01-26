@@ -153,7 +153,7 @@ build_server <- function(pool) {
 
           # Check alert conditions
           if (nrow(rv$latest_obs) > 0) {
-            rv$alerts <- check_alert_conditions(rv$latest_obs, ALERT_THRESHOLDS)
+            rv$alerts <- check_alert_conditions(rv$latest_obs, alert_thresholds)
           }
 
           rv$last_update <- Sys.time()
@@ -304,7 +304,7 @@ build_server <- function(pool) {
       invalidateLater(1000, session)
       # Update every second
 
-      current_time <- with_tz(Sys.time(), TIMEZONE_DISPLAY)
+      current_time <- with_tz(Sys.time(), timezone_display)
 
       p(format(current_time, "%H:%M:%S"))
     })
@@ -457,21 +457,21 @@ build_server <- function(pool) {
             numericInput(
               "threshold_heavy_rain",
               "Heavy Rain (mm)",
-              value = ALERT_THRESHOLDS$heavy_rain_mm,
+              value = alert_thresholds$heavy_rain_mm,
               min = 0,
               step = 0.5
             ),
             numericInput(
               "threshold_high_wind",
               "High Wind (m/s)",
-              value = ALERT_THRESHOLDS$high_wind_ms,
+              value = alert_thresholds$high_wind_ms,
               min = 0,
               step = 1
             ),
             numericInput(
               "threshold_freezing",
               "Freezing Temp (°C)",
-              value = ALERT_THRESHOLDS$freezing_temp_c,
+              value = alert_thresholds$freezing_temp_c,
               step = 1
             )
           ),
@@ -480,14 +480,14 @@ build_server <- function(pool) {
             numericInput(
               "threshold_heat_warning",
               "Heat Warning (°C)",
-              value = ALERT_THRESHOLDS$heat_warning_c,
+              value = alert_thresholds$heat_warning_c,
               min = 20,
               step = 1
             ),
             numericInput(
               "threshold_low_battery",
               "Low Battery (V)",
-              value = ALERT_THRESHOLDS$low_battery_v,
+              value = alert_thresholds$low_battery_v,
               min = 2.0,
               max = 3.0,
               step = 0.1

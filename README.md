@@ -132,7 +132,7 @@ weather_station_dashboard/
 
 ### Alert Thresholds (config.R)
 ```r
-ALERT_THRESHOLDS <- list(
+alert_thresholds <- list(
   heavy_rain_mm = 2.5,       # Heavy rain warning
   extreme_rain_mm = 7.5,     # Extreme rain alert
   high_wind_ms = 10.0,       # High wind warning (m/s)

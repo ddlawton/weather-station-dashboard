@@ -296,7 +296,7 @@ DB_PASSWORD=your_password_here
 #DB_USER=dlawton
 
 # Optional: Timezone configuration
-#TIMEZONE_DISPLAY=America/New_York
+#timezone_display=America/New_York
 EOF
     
     print_success ".env file created!"
