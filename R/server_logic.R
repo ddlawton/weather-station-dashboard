@@ -132,7 +132,7 @@ build_server <- function(pool) {
     # Fetch current conditions (every minute)
     observe({
       # Invalidate every minute for current conditions
-      invalidateLater(REFRESH_INTERVALS$current_conditions, session)
+      invalidateLater(refresh_intervals$current_conditions, session)
 
       if (!rv$db_connected) {
         return()
@@ -208,7 +208,7 @@ build_server <- function(pool) {
 
           if (nrow(obs) > 0) {
             # Prepare data for plotting (timezone conversion and derived columns)
-            obs <- prepare_plot_data(obs, TIMEZONE_DISPLAY)
+            obs <- prepare_plot_data(obs, timezone_display)
           }
 
           obs
