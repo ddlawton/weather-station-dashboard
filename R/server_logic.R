@@ -322,7 +322,7 @@ build_server <- function(pool) {
       }
       units <- input$units_system
       temp_unit <- if (units == "us") "F" else "C"
-      plot_temperature_plotly(df, show_feels_like = TRUE, unit = temp_unit)
+      plot_temperature_plotly(df, show_feels_like = FALSE, unit = temp_unit)
     })
 
     # Humidity plot

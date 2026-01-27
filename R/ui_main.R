@@ -20,276 +20,282 @@ library(plotly)
 #' @export
 # ------------------------------------------------------------------------------
 build_dashboard_ui <- function() {
-  dashboardPage(
-    skin = "blue",
-
-    # ==========================================================================
-    # HEADER
-    # ==========================================================================
-    dashboardHeader(
-      title = span(icon("cloud-sun"), " Weather Station"),
-      titleWidth = 280,
-
-      # Right-side dropdown menus
-      dropdownMenuOutput("alert_menu")
+  tagList(
+    tags$head(
+      tags$title("Weather Station Dashboard"),
+      tags$link(rel = "shortcut icon", href = "favicon.ico")
     ),
+    dashboardPage(
+      skin = "blue",
 
-    # ==========================================================================
-    # SIDEBAR
-    # ==========================================================================
-    dashboardSidebar(
-      width = 280,
-      sidebarMenu(
-        id = "main_tabs",
-        menuItem(
-          "Weather Station",
-          tabName = "weather_station",
-          icon = icon("broadcast-tower"),
-          selected = TRUE
-        ),
-        menuItem(
-          "NOAA Data",
-          tabName = "noaa_data",
-          icon = icon("cloud"),
-          badgeLabel = "Soon",
-          badgeColor = "yellow"
-        ),
-        menuItem(
-          "Forecast",
-          tabName = "forecast",
-          icon = icon("calendar-alt"),
-          badgeLabel = "Soon",
-          badgeColor = "yellow"
-        ),
-        menuItem(
-          "Unified View",
-          tabName = "unified",
-          icon = icon("layer-group"),
-          badgeLabel = "Soon",
-          badgeColor = "yellow"
-        ),
-        hr(),
+      # ==========================================================================
+      # HEADER
+      # ==========================================================================
+      dashboardHeader(
+        title = span(icon("cloud-sun"), " Weather Station"),
+        titleWidth = 280,
 
-        # Station selector (for future multi-station support)
-        div(
-          style = "padding: 10px 15px;",
-          selectInput(
-            inputId = "station_selector",
-            label = "Station",
-            choices = NULL,
-            # Populated by server
-            width = "100%"
+        # Right-side dropdown menus
+        dropdownMenuOutput("alert_menu")
+      ),
+
+      # ==========================================================================
+      # SIDEBAR
+      # ==========================================================================
+      dashboardSidebar(
+        width = 280,
+        sidebarMenu(
+          id = "main_tabs",
+          menuItem(
+            "Weather Station",
+            tabName = "weather_station",
+            icon = icon("broadcast-tower"),
+            selected = TRUE
+          ),
+          menuItem(
+            "NOAA Data",
+            tabName = "noaa_data",
+            icon = icon("cloud"),
+            badgeLabel = "Soon",
+            badgeColor = "yellow"
+          ),
+          menuItem(
+            "Forecast",
+            tabName = "forecast",
+            icon = icon("calendar-alt"),
+            badgeLabel = "Soon",
+            badgeColor = "yellow"
+          ),
+          menuItem(
+            "Unified View",
+            tabName = "unified",
+            icon = icon("layer-group"),
+            badgeLabel = "Soon",
+            badgeColor = "yellow"
+          ),
+          hr(),
+
+          # Station selector (for future multi-station support)
+          div(
+            style = "padding: 10px 15px;",
+            selectInput(
+              inputId = "station_selector",
+              label = "Station",
+              choices = NULL,
+              # Populated by server
+              width = "100%"
+            )
+          ),
+          hr(),
+
+          # Controls in sidebar
+          dashboard_controls(time_windows),
+          hr(),
+
+          # Timezone display
+          div(
+            style = "padding: 10px 15px; color: #b8c7ce; font-size: 0.85rem;",
+            p(icon("clock"), " All times in Eastern (ET)"),
+            uiOutput("current_time_display")
           )
-        ),
-        hr(),
-
-        # Controls in sidebar
-        dashboard_controls(time_windows),
-        hr(),
-
-        # Timezone display
-        div(
-          style = "padding: 10px 15px; color: #b8c7ce; font-size: 0.85rem;",
-          p(icon("clock"), " All times in Eastern (ET)"),
-          uiOutput("current_time_display")
-        )
-      )
-    ),
-
-    # ==========================================================================
-    # BODY
-    # ==========================================================================
-    dashboardBody(
-      # Custom CSS
-      tags$head(
-        tags$style(HTML(custom_css())),
-        tags$link(
-          rel = "stylesheet",
-          href = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
         )
       ),
-      tabItems(
-        # ======================================================================
-        # WEATHER STATION TAB
-        # ======================================================================
-        tabItem(
-          tabName = "weather_station",
 
-          # Alert banner (shown when conditions exceed thresholds)
-          uiOutput("alert_banner"),
-
-          # Current conditions value boxes
-          h4(
-            icon("thermometer-half"),
-            " Current Conditions",
-            style = "color: #495057; margin-bottom: 15px;"
-          ),
-          uiOutput("current_conditions"),
-          br(),
-
-          # Historical trends section
-          fluidRow(
-            column(
-              width = 12,
-              h4(
-                icon("chart-line"),
-                " Historical Trends",
-                style = "color: #495057; margin-bottom: 15px;"
-              )
-            )
-          ),
-
-          # Temperature and Humidity row
-          fluidRow(
-            box(
-              title = NULL,
-              width = 6,
-              solidHeader = FALSE,
-              status = NULL,
-              style = "background-color: #FFFFFF;",
-              withSpinner(
-                plotlyOutput("temp_plot", height = "300px"),
-                type = 6,
-                color = "#E63946"
-              )
-            ),
-            box(
-              title = NULL,
-              width = 6,
-              solidHeader = FALSE,
-              status = NULL,
-              style = "background-color: #FFFFFF;",
-              withSpinner(
-                plotlyOutput("humidity_plot", height = "300px"),
-                type = 6,
-                color = "#457B9D"
-              )
-            )
-          ),
-
-          # Wind row
-          fluidRow(
-            box(
-              title = NULL,
-              width = 8,
-              solidHeader = FALSE,
-              status = NULL,
-              style = "background-color: #FFFFFF;",
-              withSpinner(
-                plotlyOutput("wind_plot", height = "300px"),
-                type = 6,
-                color = "#2A9D8F"
-              )
-            ),
-            box(
-              title = NULL,
-              width = 4,
-              solidHeader = FALSE,
-              status = NULL,
-              style = "background-color: #FFFFFF;",
-              withSpinner(
-                plotlyOutput("wind_rose_plot", height = "350px"),
-                type = 6,
-                color = "#2A9D8F"
-              )
-            )
-          ),
-
-          # Precipitation and Pressure row
-          fluidRow(
-            box(
-              title = NULL,
-              width = 6,
-              solidHeader = FALSE,
-              status = NULL,
-              style = "background-color: #FFFFFF;",
-              withSpinner(
-                plotlyOutput("precip_plot", height = "250px"),
-                type = 6,
-                color = "#1D3557"
-              )
-            ),
-            box(
-              title = NULL,
-              width = 6,
-              solidHeader = FALSE,
-              status = NULL,
-              style = "background-color: #FFFFFF;",
-              withSpinner(
-                plotlyOutput("pressure_plot", height = "250px"),
-                type = 6,
-                color = "#6C757D"
-              )
-            )
-          ),
-
-          # Lightning (only shown if there's activity)
-          fluidRow(
-            box(
-              title = NULL,
-              width = 12,
-              solidHeader = FALSE,
-              status = NULL,
-              style = "background-color: #FFFFFF;",
-              uiOutput("lightning_section")
-            )
-          ),
-
-          # Station info footer
-          fluidRow(
-            column(
-              width = 12,
-              hr(),
-              uiOutput("station_info")
-            )
+      # ==========================================================================
+      # BODY
+      # ==========================================================================
+      dashboardBody(
+        # Custom CSS
+        tags$head(
+          tags$style(HTML(custom_css())),
+          tags$link(
+            rel = "stylesheet",
+            href = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
           )
         ),
+        tabItems(
+          # ======================================================================
+          # WEATHER STATION TAB
+          # ======================================================================
+          tabItem(
+            tabName = "weather_station",
 
-        # ======================================================================
-        # NOAA DATA TAB (Placeholder)
-        # ======================================================================
-        tabItem(
-          tabName = "noaa_data",
-          coming_soon_panel(
-            title = "NOAA Data Integration",
-            description = paste(
-              "Integration with NOAA weather data is coming soon.",
-              "This will include official observations, historical data,",
-              "and climate normals for your area."
-            ),
-            icon_name = "cloud"
-          )
-        ),
+            # Alert banner (shown when conditions exceed thresholds)
+            uiOutput("alert_banner"),
 
-        # ======================================================================
-        # FORECAST TAB (Placeholder)
-        # ======================================================================
-        tabItem(
-          tabName = "forecast",
-          coming_soon_panel(
-            title = "Weather Forecast",
-            description = paste(
-              "Weather forecast integration is coming soon.",
-              "This will include multi-day forecasts, hourly predictions,",
-              "and severe weather alerts."
+            # Current conditions value boxes
+            h4(
+              icon("thermometer-half"),
+              " Current Conditions",
+              style = "color: #495057; margin-bottom: 15px;"
             ),
-            icon_name = "calendar-alt"
-          )
-        ),
+            uiOutput("current_conditions"),
+            br(),
 
-        # ======================================================================
-        # UNIFIED VIEW TAB (Placeholder)
-        # ======================================================================
-        tabItem(
-          tabName = "unified",
-          coming_soon_panel(
-            title = "Unified Data View",
-            description = paste(
-              "The unified view will overlay data from your weather station,",
-              "NOAA observations, and forecast data for easy comparison",
-              "and validation of readings."
+            # Historical trends section
+            fluidRow(
+              column(
+                width = 12,
+                h4(
+                  icon("chart-line"),
+                  " Historical Trends",
+                  style = "color: #495057; margin-bottom: 15px;"
+                )
+              )
             ),
-            icon_name = "layer-group"
+
+            # Temperature and Humidity row
+            fluidRow(
+              box(
+                title = NULL,
+                width = 6,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                withSpinner(
+                  plotlyOutput("temp_plot", height = "300px"),
+                  type = 6,
+                  color = "#E63946"
+                )
+              ),
+              box(
+                title = NULL,
+                width = 6,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                withSpinner(
+                  plotlyOutput("humidity_plot", height = "300px"),
+                  type = 6,
+                  color = "#457B9D"
+                )
+              )
+            ),
+
+            # Wind row
+            fluidRow(
+              box(
+                title = NULL,
+                width = 8,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                withSpinner(
+                  plotlyOutput("wind_plot", height = "300px"),
+                  type = 6,
+                  color = "#2A9D8F"
+                )
+              ),
+              box(
+                title = NULL,
+                width = 4,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                withSpinner(
+                  plotlyOutput("wind_rose_plot", height = "350px"),
+                  type = 6,
+                  color = "#2A9D8F"
+                )
+              )
+            ),
+
+            # Precipitation and Pressure row
+            fluidRow(
+              box(
+                title = NULL,
+                width = 6,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                withSpinner(
+                  plotlyOutput("precip_plot", height = "250px"),
+                  type = 6,
+                  color = "#1D3557"
+                )
+              ),
+              box(
+                title = NULL,
+                width = 6,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                withSpinner(
+                  plotlyOutput("pressure_plot", height = "250px"),
+                  type = 6,
+                  color = "#6C757D"
+                )
+              )
+            ),
+
+            # Lightning (only shown if there's activity)
+            fluidRow(
+              box(
+                title = NULL,
+                width = 12,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                uiOutput("lightning_section")
+              )
+            ),
+
+            # Station info footer
+            fluidRow(
+              column(
+                width = 12,
+                hr(),
+                uiOutput("station_info")
+              )
+            )
+          ),
+
+          # ======================================================================
+          # NOAA DATA TAB (Placeholder)
+          # ======================================================================
+          tabItem(
+            tabName = "noaa_data",
+            coming_soon_panel(
+              title = "NOAA Data Integration",
+              description = paste(
+                "Integration with NOAA weather data is coming soon.",
+                "This will include official observations, historical data,",
+                "and climate normals for your area."
+              ),
+              icon_name = "cloud"
+            )
+          ),
+
+          # ======================================================================
+          # FORECAST TAB (Placeholder)
+          # ======================================================================
+          tabItem(
+            tabName = "forecast",
+            coming_soon_panel(
+              title = "Weather Forecast",
+              description = paste(
+                "Weather forecast integration is coming soon.",
+                "This will include multi-day forecasts, hourly predictions,",
+                "and severe weather alerts."
+              ),
+              icon_name = "calendar-alt"
+            )
+          ),
+
+          # ======================================================================
+          # UNIFIED VIEW TAB (Placeholder)
+          # ======================================================================
+          tabItem(
+            tabName = "unified",
+            coming_soon_panel(
+              title = "Unified Data View",
+              description = paste(
+                "The unified view will overlay data from your weather station,",
+                "NOAA observations, and forecast data for easy comparison",
+                "and validation of readings."
+              ),
+              icon_name = "layer-group"
+            )
           )
         )
       )
