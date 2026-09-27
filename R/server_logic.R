@@ -87,6 +87,24 @@ build_server <- function(pool, noaa_pool = NULL) {
     })
 
     # ==========================================================================
+    # SIDEBAR TAB SWITCHING
+    # ==========================================================================
+
+    # Toggle unified-specific controls based on active tab
+    observe({
+      active_tab <- input$main_tabs
+      is_unified <- identical(active_tab, "unified")
+
+      if (is_unified) {
+        shinyjs::show("unified_controls_sidebar")
+        shinyjs::runjs("document.querySelector('.main-sidebar').setAttribute('data-unified-active', 'true');")
+      } else {
+        shinyjs::hide("unified_controls_sidebar")
+        shinyjs::runjs("document.querySelector('.main-sidebar').setAttribute('data-unified-active', 'false');")
+      }
+    })
+
+    # ==========================================================================
     # TIME WINDOW CALCULATION
     # ==========================================================================
 
@@ -254,35 +272,31 @@ build_server <- function(pool, noaa_pool = NULL) {
     })
 
     # ========================================================================
+    # HELPER FUNCTION FOR DATA FETCHING
+    # ========================================================================
+
+    # Standardized fetch with error handling - reduces duplication
+    safe_fetch <- function(fetch_fn, ...) {
+      tryCatch(
+        fetch_fn(...),
+        error = function(e) tibble()
+      )
+    }
+
+    # ========================================================================
     # UNIFIED VIEW DATA
     # ========================================================================
 
     unified_tempest_raw <- reactive({
       input$refresh_now
-      req(rv$db_connected)
-      req(time_range())
-
+      req(rv$db_connected, time_range())
       range <- time_range()
-
-      tryCatch(
-        {
-          fetch_observations(
-            pool,
-            start_time = range$start,
-            end_time = range$end,
-            station_id = selected_station(),
-            aggregate_interval = NULL
-          )
-        },
-        error = function(e) {
-          tibble()
-        }
-      )
+      safe_fetch(fetch_observations, pool, range$start, range$end, selected_station(), NULL)
     })
 
     unified_tempest_hourly <- reactive({
       raw <- unified_tempest_raw()
-      if (is.null(raw) || nrow(raw) == 0) {
+      if (nrow(raw) == 0) {
         return(tibble())
       }
       aggregate_tempest_hourly(raw)
@@ -290,37 +304,15 @@ build_server <- function(pool, noaa_pool = NULL) {
 
     unified_noaa_obs_raw <- reactive({
       input$refresh_now
-      req(time_range())
-
-      if (!noaa_connected()) {
-        return(tibble())
-      }
-
+      req(time_range(), noaa_connected())
       range <- time_range()
-      source_filter <- input$unified_noaa_source
-      if (is.null(source_filter) || !nzchar(source_filter)) {
-        source_filter <- "NWS"
-      }
-
-      tryCatch(
-        {
-          fetch_noaa_observations(
-            noaa_pool,
-            start_time = range$start,
-            end_time = range$end,
-            station_id = "KRDU",
-            data_source = source_filter
-          )
-        },
-        error = function(e) {
-          tibble()
-        }
-      )
+      source <- input$unified_noaa_source %||% "NWS"
+      safe_fetch(fetch_noaa_observations, noaa_pool, range$start, range$end, "KRDU", source)
     })
 
     unified_noaa_obs_hourly <- reactive({
       raw <- unified_noaa_obs_raw()
-      if (is.null(raw) || nrow(raw) == 0) {
+      if (nrow(raw) == 0) {
         return(tibble())
       }
       aggregate_noaa_obs_hourly(raw, station_id = "KRDU")
@@ -328,32 +320,14 @@ build_server <- function(pool, noaa_pool = NULL) {
 
     unified_noaa_forecast_raw <- reactive({
       input$refresh_now
-      req(time_range())
-
-      if (!noaa_connected()) {
-        return(tibble())
-      }
-
+      req(time_range(), noaa_connected())
       range <- time_range()
-
-      tryCatch(
-        {
-          fetch_noaa_forecast_hourly(
-            noaa_pool,
-            start_time = range$start,
-            end_time = range$end,
-            station_id = "KRDU"
-          )
-        },
-        error = function(e) {
-          tibble()
-        }
-      )
+      safe_fetch(fetch_noaa_forecast_hourly, noaa_pool, range$start, range$end, "KRDU")
     })
 
     unified_noaa_forecast_hourly <- reactive({
       raw <- unified_noaa_forecast_raw()
-      if (is.null(raw) || nrow(raw) == 0) {
+      if (nrow(raw) == 0) {
         return(tibble())
       }
       prepare_noaa_forecast_hourly(raw, station_id = "KRDU")
@@ -677,15 +651,22 @@ build_server <- function(pool, noaa_pool = NULL) {
       out
     }
 
-    output$unified_obs_delta_plot <- renderPlotly({
+    # Helper to render unified plots with standard conversions
+    render_unified_plot <- function(data_reactive, columns, plot_fn) {
       info <- unified_var_info()
-      data <- unified_obs_comparison()
-      data <- convert_unified_values(data, c("noaa_value", "tempest_value", "delta_noaa_minus_tempest"), info)
+      data <- data_reactive()
+      if (nrow(data) == 0) {
+        return(plotly_empty_message("No data available"))
+      }
+      data <- convert_unified_values(data, columns, info)
+      plot_fn(data, variable_label = info$label, unit_label = info$unit)
+    }
 
-      plot_unified_obs_delta_plotly(
-        data,
-        variable_label = info$label,
-        unit_label = info$unit
+    output$unified_obs_delta_plot <- renderPlotly({
+      render_unified_plot(
+        unified_obs_comparison,
+        c("noaa_value", "tempest_value", "delta_noaa_minus_tempest"),
+        plot_unified_obs_delta_plotly
       )
     })
 
@@ -693,34 +674,35 @@ build_server <- function(pool, noaa_pool = NULL) {
       info <- unified_var_info()
       data <- unified_forecast_accuracy()
 
-      req(input$unified_target_hour)
+      if (nrow(data) == 0) {
+        return(plotly_empty_message("No forecast data available"))
+      }
+      if (is.null(input$unified_target_hour) || !nzchar(input$unified_target_hour)) {
+        return(plotly_empty_message("Select a target hour in the sidebar"))
+      }
+
       target_hour <- suppressWarnings(as.POSIXct(input$unified_target_hour, tz = "UTC"))
       if (is.na(target_hour)) {
-        return(plotly_empty_message("Invalid target hour selection"))
+        return(plotly_empty_message("Invalid target hour"))
       }
 
       target_data <- data |>
         filter(forecast_hour == target_hour) |>
         arrange(desc(lead_hours))
 
-      target_data <- convert_unified_values(target_data, c("forecast_value", "actual_value", "error", "abs_error"), info)
+      if (nrow(target_data) == 0) {
+        return(plotly_empty_message("No forecast data for this target hour"))
+      }
 
-      plot_forecast_evolution_plotly(
-        target_data,
-        variable_label = info$label,
-        unit_label = info$unit
-      )
+      target_data <- convert_unified_values(target_data, c("forecast_value", "actual_value", "error", "abs_error"), info)
+      plot_forecast_evolution_plotly(target_data, variable_label = info$label, unit_label = info$unit)
     })
 
     output$unified_accuracy_plot <- renderPlotly({
-      info <- unified_var_info()
-      data <- unified_forecast_accuracy()
-      data <- convert_unified_values(data, c("forecast_value", "actual_value", "error", "abs_error"), info)
-
-      plot_forecast_accuracy_plotly(
-        data,
-        variable_label = info$label,
-        unit_label = info$unit
+      render_unified_plot(
+        unified_forecast_accuracy,
+        c("forecast_value", "actual_value", "error", "abs_error"),
+        plot_forecast_accuracy_plotly
       )
     })
 

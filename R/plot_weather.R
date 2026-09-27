@@ -843,15 +843,15 @@ plot_forecast_evolution_plotly <- function(df,
     return(plotly_empty_message("No forecast history for selected hour"))
   }
 
-  plot_ly(df, x = ~lead_hours, y = ~forecast_value, type = "scatter", mode = "lines+markers", height = 320) |>
+  plot_ly(df, x = ~lead_hours, y = ~forecast_value, type = "scatter", mode = "lines+markers", height = 320, name = "Forecast") |>
     add_trace(
-      name = "Forecast",
       line = list(color = "rgb(42, 157, 143)", width = 2),
       marker = list(size = 6),
       hovertemplate = paste0(
         "<b>Lead</b>: %{x:.0f} h<br>",
         "<b>Forecast</b>: %{y:.2f} ", unit_label, "<extra></extra>"
-      )
+      ),
+      showlegend = FALSE
     ) |>
     layout(
       title = list(text = paste0(variable_label, ": Forecast Evolution"), x = 0),
@@ -892,7 +892,7 @@ plot_forecast_accuracy_plotly <- function(df,
       .groups = "drop"
     )
 
-  plot_ly(summary_df, x = ~lead_bucket, y = ~mae, type = "bar", height = 320) |>
+  plot_ly(summary_df, x = ~lead_bucket, y = ~mae, type = "bar", height = 320, name = "MAE") |>
     add_trace(
       marker = list(color = "rgb(244, 162, 97)"),
       hovertemplate = paste0(
@@ -901,7 +901,7 @@ plot_forecast_accuracy_plotly <- function(df,
         "<b>Samples</b>: %{customdata}<extra></extra>"
       ),
       customdata = ~n,
-      name = "MAE"
+      showlegend = FALSE
     ) |>
     layout(
       title = list(text = paste0(variable_label, ": Forecast MAE by Lead Time"), x = 0),

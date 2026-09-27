@@ -440,8 +440,10 @@ aggregate_noaa_obs_hourly <- function(df, station_id = "KRDU") {
       noaa_obs_temperature_c = if ("temperature" %in% names(working)) mean(temperature, na.rm = TRUE) else NA_real_,
       noaa_obs_humidity = if ("relative_humidity" %in% names(working)) mean(relative_humidity, na.rm = TRUE) else NA_real_,
       noaa_obs_pressure_hpa = if ("barometric_pressure" %in% names(working)) mean(barometric_pressure, na.rm = TRUE) / 100 else NA_real_,
-      noaa_obs_wind_speed = if ("wind_speed" %in% names(working)) mean(wind_speed, na.rm = TRUE) else NA_real_,
-      noaa_obs_wind_gust = if ("wind_gust" %in% names(working)) max(wind_gust, na.rm = TRUE) else NA_real_,
+      # NOAA wind_speed is in knots; convert to m/s (1 knot = 0.51444 m/s)
+      noaa_obs_wind_speed = if ("wind_speed" %in% names(working)) mean(wind_speed, na.rm = TRUE) * 0.51444 else NA_real_,
+      # NOAA wind_gust is in knots; convert to m/s
+      noaa_obs_wind_gust = if ("wind_gust" %in% names(working)) max(wind_gust, na.rm = TRUE) * 0.51444 else NA_real_,
       noaa_obs_precip = if ("precipitation" %in% names(working)) sum(precipitation, na.rm = TRUE) else NA_real_,
       .groups = "drop"
     ) |>
@@ -477,10 +479,16 @@ prepare_noaa_forecast_hourly <- function(df, station_id = "KRDU") {
   }
 
   temperature_raw <- suppressWarnings(as.numeric(working$temperature))
+  # Detect unit: if value is in reasonable Fahrenheit range (-50 to 130) but outside
+  # reasonable Celsius range for NC (-40 to 45), assume Fahrenheit and convert
   temperature_c <- ifelse(
     is.na(temperature_raw),
     NA_real_,
-    ifelse(temperature_raw > 60, (temperature_raw - 32) * 5 / 9, temperature_raw)
+    ifelse(
+      temperature_raw > 45 & temperature_raw < 130, # Likely Fahrenheit (reasonable outdoor temp range)
+      (temperature_raw - 32) * 5 / 9, # Convert to Celsius
+      temperature_raw # Already Celsius or edge case
+    )
   )
 
   precip_forecast <- suppressWarnings(as.numeric(working$quantitative_precipitation))
@@ -493,8 +501,9 @@ prepare_noaa_forecast_hourly <- function(df, station_id = "KRDU") {
       noaa_fcst_temperature_c = temperature_c,
       noaa_fcst_humidity = if ("relative_humidity" %in% names(working)) as.numeric(relative_humidity) else NA_real_,
       noaa_fcst_pressure_hpa = if ("pressure" %in% names(working)) as.numeric(pressure) else NA_real_,
-      noaa_fcst_wind_speed = if ("wind_speed" %in% names(working)) suppressWarnings(as.numeric(wind_speed)) else NA_real_,
-      noaa_fcst_wind_gust = if ("wind_gust" %in% names(working)) suppressWarnings(as.numeric(wind_gust)) else NA_real_,
+      # NOAA forecast wind is in knots; convert to m/s (1 knot = 0.51444 m/s)
+      noaa_fcst_wind_speed = if ("wind_speed" %in% names(working)) suppressWarnings(as.numeric(wind_speed) * 0.51444) else NA_real_,
+      noaa_fcst_wind_gust = if ("wind_gust" %in% names(working)) suppressWarnings(as.numeric(wind_gust) * 0.51444) else NA_real_,
       noaa_fcst_precip = precip_forecast
     ) |>
     select(

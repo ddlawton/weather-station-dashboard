@@ -21,9 +21,18 @@ library(plotly)
 # ------------------------------------------------------------------------------
 build_dashboard_ui <- function() {
   tagList(
+    shinyjs::useShinyjs(),
     tags$head(
       tags$title("Weather Station Dashboard"),
-      tags$link(rel = "shortcut icon", href = "favicon.ico")
+      tags$link(rel = "shortcut icon", href = "favicon.ico"),
+      tags$style(HTML(custom_css())),
+      tags$script(HTML("
+        // Wait for sidebar to be ready, then set initial state
+        $(document).on('shiny:connected', function(event) {
+          // Initial state set by server observer
+          // CSS will handle show/hide based on data-unified-active attribute
+        });
+      "))
     ),
     dashboardPage(
       skin = "blue",
@@ -87,7 +96,47 @@ build_dashboard_ui <- function() {
           hr(),
 
           # Controls in sidebar
-          dashboard_controls(time_windows),
+          div(
+            id = "dashboard_controls_standard",
+            dashboard_controls(time_windows)
+          ),
+          hr(),
+
+          # Unified View Controls (shown when on Unified tab)
+          div(
+            id = "unified_controls_sidebar",
+            style = "padding: 10px 15px;",
+            h4("Unified Comparison", style = "margin-top: 0; font-weight: 600; font-size: 0.95rem;"),
+            radioButtons(
+              inputId = "unified_baseline",
+              label = "Baseline",
+              choices = c(
+                "Compare to NOAA Obs" = "noaa_obs",
+                "Compare to Tempest" = "tempest"
+              ),
+              selected = "noaa_obs",
+              inline = FALSE
+            ),
+            selectInput(
+              inputId = "unified_variable",
+              label = "Variable",
+              choices = c(
+                "Temperature" = "temperature",
+                "Humidity" = "humidity",
+                "Pressure" = "pressure",
+                "Wind (Avg)" = "wind_avg",
+                "Wind (Gust)" = "wind_gust"
+              ),
+              selected = "temperature"
+            ),
+            selectInput(
+              inputId = "unified_noaa_source",
+              label = "NOAA Source",
+              choices = c("NWS" = "NWS"),
+              selected = "NWS"
+            ),
+            uiOutput("unified_target_time_selector")
+          ),
           hr(),
 
           # Timezone display
@@ -144,7 +193,7 @@ build_dashboard_ui <- function() {
 
             # Temperature and Humidity row
             fluidRow(
-              box(
+              shinydashboard::box(
                 title = NULL,
                 width = 6,
                 solidHeader = FALSE,
@@ -156,7 +205,7 @@ build_dashboard_ui <- function() {
                   color = "#E63946"
                 )
               ),
-              box(
+              shinydashboard::box(
                 title = NULL,
                 width = 6,
                 solidHeader = FALSE,
@@ -172,7 +221,7 @@ build_dashboard_ui <- function() {
 
             # Wind row
             fluidRow(
-              box(
+              shinydashboard::box(
                 title = NULL,
                 width = 8,
                 solidHeader = FALSE,
@@ -184,7 +233,7 @@ build_dashboard_ui <- function() {
                   color = "#2A9D8F"
                 )
               ),
-              box(
+              shinydashboard::box(
                 title = NULL,
                 width = 4,
                 solidHeader = FALSE,
@@ -200,7 +249,7 @@ build_dashboard_ui <- function() {
 
             # Precipitation and Pressure row
             fluidRow(
-              box(
+              shinydashboard::box(
                 title = NULL,
                 width = 6,
                 solidHeader = FALSE,
@@ -212,7 +261,7 @@ build_dashboard_ui <- function() {
                   color = "#1D3557"
                 )
               ),
-              box(
+              shinydashboard::box(
                 title = NULL,
                 width = 6,
                 solidHeader = FALSE,
@@ -228,7 +277,7 @@ build_dashboard_ui <- function() {
 
             # Lightning (only shown if there's activity)
             fluidRow(
-              box(
+              shinydashboard::box(
                 title = NULL,
                 width = 12,
                 solidHeader = FALSE,
@@ -281,78 +330,30 @@ build_dashboard_ui <- function() {
           ),
 
           # ======================================================================
-          # UNIFIED VIEW TAB (Placeholder)
+          # UNIFIED VIEW TAB
           # ======================================================================
           tabItem(
             tabName = "unified",
             fluidRow(
-              box(
-                title = tagList(icon("sliders-h"), "Unified Comparison Controls"),
+              shinydashboard::box(
+                title = tagList(icon("sliders-h"), "Forecast Lead Window"),
                 width = 12,
                 solidHeader = FALSE,
                 status = NULL,
                 style = "background-color: #FFFFFF;",
-                fluidRow(
-                  column(
-                    width = 3,
-                    radioButtons(
-                      inputId = "unified_baseline",
-                      label = "Baseline",
-                      choices = c(
-                        "Compare to NOAA Obs" = "noaa_obs",
-                        "Compare to Tempest" = "tempest"
-                      ),
-                      selected = "noaa_obs",
-                      inline = FALSE
-                    )
-                  ),
-                  column(
-                    width = 3,
-                    selectInput(
-                      inputId = "unified_variable",
-                      label = "Variable",
-                      choices = c(
-                        "Temperature" = "temperature",
-                        "Humidity" = "humidity",
-                        "Pressure" = "pressure",
-                        "Wind (Avg)" = "wind_avg",
-                        "Wind (Gust)" = "wind_gust",
-                        "Precipitation" = "precip"
-                      ),
-                      selected = "temperature"
-                    )
-                  ),
-                  column(
-                    width = 3,
-                    sliderInput(
-                      inputId = "unified_lead_hours",
-                      label = "Forecast Lead Window (hours)",
-                      min = 6,
-                      max = 168,
-                      value = c(6, 168),
-                      step = 6
-                    )
-                  ),
-                  column(
-                    width = 3,
-                    selectInput(
-                      inputId = "unified_noaa_source",
-                      label = "NOAA Source",
-                      choices = c("NWS" = "NWS"),
-                      selected = "NWS"
-                    )
-                  )
-                ),
-                fluidRow(
-                  column(
-                    width = 12,
-                    uiOutput("unified_target_time_selector")
-                  )
+                sliderInput(
+                  inputId = "unified_lead_hours",
+                  label = NULL,
+                  min = 6,
+                  max = 168,
+                  value = c(6, 168),
+                  step = 6,
+                  width = "100%"
                 )
               )
             ),
             fluidRow(
-              box(
+              shinydashboard::box(
                 title = tagList(icon("ruler-combined"), "NOAA vs Tempest (Hourly Observed)"),
                 width = 12,
                 solidHeader = FALSE,
@@ -366,7 +367,7 @@ build_dashboard_ui <- function() {
               )
             ),
             fluidRow(
-              box(
+              shinydashboard::box(
                 title = tagList(icon("project-diagram"), "Forecast Evolution (Selected Target Hour)"),
                 width = 6,
                 solidHeader = FALSE,
@@ -378,7 +379,7 @@ build_dashboard_ui <- function() {
                   color = "#2A9D8F"
                 )
               ),
-              box(
+              shinydashboard::box(
                 title = tagList(icon("bullseye"), "Forecast Accuracy by Lead Time"),
                 width = 6,
                 solidHeader = FALSE,
@@ -542,6 +543,19 @@ custom_css <- function() {
 
   ::-webkit-scrollbar-thumb:hover {
     background: #A1A1A1;
+  }
+
+  /* Show/hide unified controls sidebar */
+  #unified_controls_sidebar {
+    display: none;
+  }
+
+  #dashboard_controls_standard {
+    display: block;
+  }
+
+  .main-sidebar[data-unified-active='true'] #unified_controls_sidebar {
+    display: block !important;
   }
   "
 }
