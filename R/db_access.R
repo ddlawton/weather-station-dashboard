@@ -678,6 +678,130 @@ get_available_stations <- function(pool) {
 }
 
 # ------------------------------------------------------------------------------
+#' Fetch NOAA Observations
+#'
+#' Retrieves NOAA observation records for a station and time range.
+#'
+#' @param pool NOAA database connection pool
+#' @param start_time POSIXct start time (UTC)
+#' @param end_time POSIXct end time (UTC)
+#' @param station_id NOAA station identifier (default: KRDU)
+#' @param data_source Optional NOAA source filter (default: NWS)
+#'
+#' @return Tibble of NOAA observations
+#' @export
+# ------------------------------------------------------------------------------
+fetch_noaa_observations <- function(pool,
+                                    start_time,
+                                    end_time = Sys.time(),
+                                    station_id = "KRDU",
+                                    data_source = "NWS") {
+  if (is.null(pool)) {
+    warning("NOAA database pool is NULL")
+    return(tibble())
+  }
+
+  query <- "
+    SELECT
+      id,
+      station_id,
+      observation_time,
+      temperature,
+      dewpoint,
+      wind_speed,
+      wind_direction,
+      wind_gust,
+      barometric_pressure,
+      relative_humidity,
+      precipitation,
+      visibility,
+      text_description,
+      data_source
+    FROM observations
+    WHERE observation_time >= $1
+      AND observation_time <= $2
+      AND station_id = $3
+  "
+
+  params <- list(start_time, end_time, station_id)
+
+  if (!is.null(data_source) && nzchar(data_source)) {
+    query <- paste(query, "AND data_source = $4")
+    params <- list(start_time, end_time, station_id, data_source)
+  }
+
+  query <- paste(query, "ORDER BY observation_time DESC")
+
+  tryCatch(
+    {
+      result <- dbGetQuery(pool, query, params = params)
+      as_tibble(result)
+    },
+    error = function(e) {
+      warning(paste("Error fetching NOAA observations:", e$message))
+      tibble()
+    }
+  )
+}
+
+# ------------------------------------------------------------------------------
+#' Fetch NOAA Hourly Forecast
+#'
+#' Retrieves NOAA forecast snapshots for a station and time range.
+#'
+#' @param pool NOAA database connection pool
+#' @param start_time POSIXct start time (UTC)
+#' @param end_time POSIXct end time (UTC)
+#' @param station_id NOAA station identifier (default: KRDU)
+#'
+#' @return Tibble of NOAA forecast rows
+#' @export
+# ------------------------------------------------------------------------------
+fetch_noaa_forecast_hourly <- function(pool,
+                                       start_time,
+                                       end_time = Sys.time(),
+                                       station_id = "KRDU") {
+  if (is.null(pool)) {
+    warning("NOAA database pool is NULL")
+    return(tibble())
+  }
+
+  query <- "
+    SELECT
+      id,
+      station_id,
+      generated_at,
+      forecast_time,
+      temperature,
+      dewpoint,
+      wind_speed,
+      wind_direction,
+      wind_gust,
+      pressure,
+      relative_humidity,
+      quantitative_precipitation,
+      precipitation_probability,
+      weather_summary
+    FROM forecast_hourly
+    WHERE forecast_time >= $1
+      AND forecast_time <= $2
+      AND station_id = $3
+    ORDER BY forecast_time DESC, generated_at DESC
+  "
+
+  tryCatch(
+    {
+      result <- dbGetQuery(pool, query, params = list(start_time, end_time, station_id))
+      as_tibble(result)
+    },
+    error = function(e) {
+      warning(paste("Error fetching NOAA forecast:", e$message))
+      tibble()
+    }
+  )
+}
+
+# ------------------------------------------------------------------------------
 #' Get Data Time Range
 #'
 #' Returns the earliest and latest timestamps in the database.

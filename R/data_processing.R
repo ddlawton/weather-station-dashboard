@@ -337,6 +337,312 @@ aggregate_observations <- function(df,
 }
 
 # ------------------------------------------------------------------------------
+#' Clamp Negative Precipitation Deltas
+#'
+#' Converts cumulative precipitation readings into non-negative interval deltas.
+#' Negative resets are clamped to zero.
+#'
+#' @param precip_values Numeric vector of cumulative precipitation
+#'
+#' @return Numeric vector of interval precipitation deltas
+#' @export
+# ------------------------------------------------------------------------------
+clamp_precip_deltas <- function(precip_values) {
+  values <- as.numeric(precip_values)
+  if (length(values) == 0) {
+    return(numeric(0))
+  }
+
+  deltas <- values - dplyr::lag(values, default = values[1])
+  deltas[1] <- values[1]
+  deltas[is.na(deltas)] <- 0
+  pmax(deltas, 0)
+}
+
+# ------------------------------------------------------------------------------
+#' Aggregate Tempest Data to Hourly
+#'
+#' Aggregates Tempest observations to hourly resolution. Precipitation is
+#' treated as cumulative and converted to interval deltas before summation.
+#'
+#' @param df Tempest observations with at least timestamp and station_id
+#'
+#' @return Hourly aggregated tibble
+#' @export
+# ------------------------------------------------------------------------------
+aggregate_tempest_hourly <- function(df) {
+  if (nrow(df) == 0) {
+    return(tibble())
+  }
+
+  required <- c("timestamp", "station_id")
+  if (!all(required %in% names(df))) {
+    return(tibble())
+  }
+
+  working <- df |>
+    arrange(station_id, timestamp) |>
+    group_by(station_id) |>
+    mutate(
+      precip_delta = if ("precip" %in% names(df)) clamp_precip_deltas(precip) else NA_real_,
+      hour = floor_date(timestamp, unit = "hour")
+    ) |>
+    ungroup()
+
+  working |>
+    group_by(station_id, hour) |>
+    summarise(
+      tempest_air_temp = if ("air_temp" %in% names(working)) mean(air_temp, na.rm = TRUE) else NA_real_,
+      tempest_humidity = if ("humidity" %in% names(working)) mean(humidity, na.rm = TRUE) else NA_real_,
+      tempest_pressure = if ("pressure" %in% names(working)) mean(pressure, na.rm = TRUE) else NA_real_,
+      tempest_wind_avg = if ("wind_avg" %in% names(working)) mean(wind_avg, na.rm = TRUE) else NA_real_,
+      tempest_wind_gust = if ("wind_gust" %in% names(working)) max(wind_gust, na.rm = TRUE) else NA_real_,
+      tempest_precip = if ("precip_delta" %in% names(working)) sum(precip_delta, na.rm = TRUE) else NA_real_,
+      .groups = "drop"
+    ) |>
+    mutate(across(starts_with("tempest_"), ~ ifelse(is.nan(.x), NA_real_, .x)))
+}
+
+# ------------------------------------------------------------------------------
+#' Aggregate NOAA Observation Data to Hourly
+#'
+#' @param df NOAA observations data frame
+#' @param station_id Optional station filter (default KRDU)
+#'
+#' @return Hourly aggregated tibble
+#' @export
+# ------------------------------------------------------------------------------
+aggregate_noaa_obs_hourly <- function(df, station_id = "KRDU") {
+  if (nrow(df) == 0) {
+    return(tibble())
+  }
+
+  required <- c("observation_time", "station_id")
+  if (!all(required %in% names(df))) {
+    return(tibble())
+  }
+
+  working <- df
+  if (!is.null(station_id)) {
+    working <- working |> filter(station_id == !!station_id)
+  }
+
+  if (nrow(working) == 0) {
+    return(tibble())
+  }
+
+  working <- working |>
+    mutate(hour = floor_date(observation_time, unit = "hour"))
+
+  working |>
+    group_by(station_id, hour) |>
+    summarise(
+      noaa_obs_temperature_c = if ("temperature" %in% names(working)) mean(temperature, na.rm = TRUE) else NA_real_,
+      noaa_obs_humidity = if ("relative_humidity" %in% names(working)) mean(relative_humidity, na.rm = TRUE) else NA_real_,
+      noaa_obs_pressure_hpa = if ("barometric_pressure" %in% names(working)) mean(barometric_pressure, na.rm = TRUE) / 100 else NA_real_,
+      noaa_obs_wind_speed = if ("wind_speed" %in% names(working)) mean(wind_speed, na.rm = TRUE) else NA_real_,
+      noaa_obs_wind_gust = if ("wind_gust" %in% names(working)) max(wind_gust, na.rm = TRUE) else NA_real_,
+      noaa_obs_precip = if ("precipitation" %in% names(working)) sum(precipitation, na.rm = TRUE) else NA_real_,
+      .groups = "drop"
+    ) |>
+    mutate(across(starts_with("noaa_obs_"), ~ ifelse(is.nan(.x), NA_real_, .x)))
+}
+
+# ------------------------------------------------------------------------------
+#' Prepare NOAA Forecast for Unified Comparison
+#'
+#' @param df NOAA hourly forecast data frame
+#' @param station_id Optional station filter (default KRDU)
+#'
+#' @return Forecast tibble with normalized columns and lead_hours
+#' @export
+# ------------------------------------------------------------------------------
+prepare_noaa_forecast_hourly <- function(df, station_id = "KRDU") {
+  if (nrow(df) == 0) {
+    return(tibble())
+  }
+
+  required <- c("forecast_time", "generated_at", "station_id")
+  if (!all(required %in% names(df))) {
+    return(tibble())
+  }
+
+  working <- df
+  if (!is.null(station_id)) {
+    working <- working |> filter(station_id == !!station_id)
+  }
+
+  if (nrow(working) == 0) {
+    return(tibble())
+  }
+
+  temperature_raw <- suppressWarnings(as.numeric(working$temperature))
+  temperature_c <- ifelse(
+    is.na(temperature_raw),
+    NA_real_,
+    ifelse(temperature_raw > 60, (temperature_raw - 32) * 5 / 9, temperature_raw)
+  )
+
+  precip_forecast <- suppressWarnings(as.numeric(working$quantitative_precipitation))
+
+  working |>
+    mutate(
+      forecast_hour = floor_date(forecast_time, unit = "hour"),
+      generated_hour = floor_date(generated_at, unit = "hour"),
+      lead_hours = as.numeric(difftime(forecast_hour, generated_hour, units = "hours")),
+      noaa_fcst_temperature_c = temperature_c,
+      noaa_fcst_humidity = if ("relative_humidity" %in% names(working)) as.numeric(relative_humidity) else NA_real_,
+      noaa_fcst_pressure_hpa = if ("pressure" %in% names(working)) as.numeric(pressure) else NA_real_,
+      noaa_fcst_wind_speed = if ("wind_speed" %in% names(working)) suppressWarnings(as.numeric(wind_speed)) else NA_real_,
+      noaa_fcst_wind_gust = if ("wind_gust" %in% names(working)) suppressWarnings(as.numeric(wind_gust)) else NA_real_,
+      noaa_fcst_precip = precip_forecast
+    ) |>
+    select(
+      station_id,
+      forecast_hour,
+      generated_hour,
+      lead_hours,
+      starts_with("noaa_fcst_")
+    )
+}
+
+# ------------------------------------------------------------------------------
+#' Build Hourly NOAA vs Tempest Observation Comparison
+#'
+#' @param noaa_obs_hourly Hourly NOAA observations
+#' @param tempest_hourly Hourly Tempest observations
+#' @param variable_name Variable key (temperature, humidity, pressure, wind_avg,
+#'   wind_gust, precip)
+#'
+#' @return Tibble with paired values and deltas
+#' @export
+# ------------------------------------------------------------------------------
+build_obs_comparison_hourly <- function(noaa_obs_hourly, tempest_hourly,
+                                        variable_name = "temperature") {
+  if (nrow(noaa_obs_hourly) == 0 || nrow(tempest_hourly) == 0) {
+    return(tibble())
+  }
+
+  mapping <- list(
+    temperature = c("noaa_obs_temperature_c", "tempest_air_temp"),
+    humidity = c("noaa_obs_humidity", "tempest_humidity"),
+    pressure = c("noaa_obs_pressure_hpa", "tempest_pressure"),
+    wind_avg = c("noaa_obs_wind_speed", "tempest_wind_avg"),
+    wind_gust = c("noaa_obs_wind_gust", "tempest_wind_gust"),
+    precip = c("noaa_obs_precip", "tempest_precip")
+  )
+
+  if (!variable_name %in% names(mapping)) {
+    return(tibble())
+  }
+
+  cols <- mapping[[variable_name]]
+  if (!all(cols %in% c(names(noaa_obs_hourly), names(tempest_hourly)))) {
+    return(tibble())
+  }
+
+  joined <- noaa_obs_hourly |>
+    inner_join(tempest_hourly, by = "hour")
+
+  joined |>
+    transmute(
+      hour,
+      noaa_value = .data[[cols[1]]],
+      tempest_value = .data[[cols[2]]],
+      delta_noaa_minus_tempest = noaa_value - tempest_value
+    )
+}
+
+# ------------------------------------------------------------------------------
+#' Build Forecast Accuracy Dataset
+#'
+#' @param noaa_forecast_hourly Prepared NOAA forecast data
+#' @param noaa_obs_hourly Hourly NOAA observations
+#' @param tempest_hourly Hourly Tempest observations
+#' @param baseline Baseline series: "noaa_obs" or "tempest"
+#' @param variable_name Variable key
+#'
+#' @return Tibble with forecast, actual, and error columns
+#' @export
+# ------------------------------------------------------------------------------
+build_forecast_accuracy_hourly <- function(noaa_forecast_hourly,
+                                           noaa_obs_hourly,
+                                           tempest_hourly,
+                                           baseline = "noaa_obs",
+                                           variable_name = "temperature") {
+  if (nrow(noaa_forecast_hourly) == 0) {
+    return(tibble())
+  }
+
+  fcst_map <- c(
+    temperature = "noaa_fcst_temperature_c",
+    humidity = "noaa_fcst_humidity",
+    pressure = "noaa_fcst_pressure_hpa",
+    wind_avg = "noaa_fcst_wind_speed",
+    wind_gust = "noaa_fcst_wind_gust",
+    precip = "noaa_fcst_precip"
+  )
+
+  obs_map <- c(
+    temperature = "noaa_obs_temperature_c",
+    humidity = "noaa_obs_humidity",
+    pressure = "noaa_obs_pressure_hpa",
+    wind_avg = "noaa_obs_wind_speed",
+    wind_gust = "noaa_obs_wind_gust",
+    precip = "noaa_obs_precip"
+  )
+
+  tempest_map <- c(
+    temperature = "tempest_air_temp",
+    humidity = "tempest_humidity",
+    pressure = "tempest_pressure",
+    wind_avg = "tempest_wind_avg",
+    wind_gust = "tempest_wind_gust",
+    precip = "tempest_precip"
+  )
+
+  if (!variable_name %in% names(fcst_map)) {
+    return(tibble())
+  }
+
+  fcst_col <- fcst_map[[variable_name]]
+  if (!fcst_col %in% names(noaa_forecast_hourly)) {
+    return(tibble())
+  }
+
+  actual_series <- if (baseline == "tempest") {
+    if (nrow(tempest_hourly) == 0 || !tempest_map[[variable_name]] %in% names(tempest_hourly)) {
+      return(tibble())
+    }
+    tempest_hourly |>
+      transmute(forecast_hour = hour, actual_value = .data[[tempest_map[[variable_name]]]])
+  } else {
+    if (nrow(noaa_obs_hourly) == 0 || !obs_map[[variable_name]] %in% names(noaa_obs_hourly)) {
+      return(tibble())
+    }
+    noaa_obs_hourly |>
+      transmute(forecast_hour = hour, actual_value = .data[[obs_map[[variable_name]]]])
+  }
+
+  noaa_forecast_hourly |>
+    mutate(forecast_value = .data[[fcst_col]]) |>
+    inner_join(actual_series, by = "forecast_hour") |>
+    mutate(
+      error = forecast_value - actual_value,
+      abs_error = abs(error),
+      lead_bucket = case_when(
+        lead_hours <= 6 ~ "0-6h",
+        lead_hours <= 12 ~ "6-12h",
+        lead_hours <= 24 ~ "12-24h",
+        lead_hours <= 72 ~ "1-3d",
+        lead_hours <= 168 ~ "3-7d",
+        TRUE ~ ">7d"
+      )
+    ) |>
+    filter(!is.na(forecast_value), !is.na(actual_value), !is.na(lead_hours))
+}
+
+# ------------------------------------------------------------------------------
 #' Calculate Circular Mean for Wind Direction
 #'
 #' Properly averages wind direction using circular statistics.

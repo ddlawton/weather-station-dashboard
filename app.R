@@ -49,12 +49,18 @@ source("R/server_logic.R")
 # Create database connection pool
 # This is created once when the app starts and shared across all sessions
 db_pool <- create_db_pool(db_config)
+noaa_db_pool <- create_db_pool(noaa_db_config)
 
 # Ensure pool is closed when app stops
 onStop(function() {
   if (!is.null(db_pool)) {
     message("Closing database connection pool...")
     close_db_pool(db_pool)
+  }
+
+  if (!is.null(noaa_db_pool)) {
+    message("Closing NOAA database connection pool...")
+    close_db_pool(noaa_db_pool)
   }
 })
 
@@ -66,7 +72,7 @@ onStop(function() {
 ui <- build_dashboard_ui()
 
 # Build server with database pool
-server <- build_server(db_pool)
+server <- build_server(db_pool, noaa_db_pool)
 
 # ==============================================================================
 # RUN APPLICATION

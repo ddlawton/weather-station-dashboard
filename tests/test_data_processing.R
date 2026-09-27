@@ -206,6 +206,75 @@ test_that("check_alert_conditions returns no alerts for normal conditions", {
 })
 
 # ==============================================================================
+# TEST: unified comparison helpers
+# ==============================================================================
+
+test_that("clamp_precip_deltas clamps negative resets to zero", {
+  precip <- c(0.1, 0.4, 0.6, 0.2, 0.5)
+  deltas <- clamp_precip_deltas(precip)
+
+  expect_equal(deltas, c(0.1, 0.3, 0.2, 0, 0.3), tolerance = 1e-6)
+})
+
+test_that("aggregate_tempest_hourly calculates hourly precip from interval deltas", {
+  ts <- as.POSIXct(c(
+    "2026-09-10 10:05:00", "2026-09-10 10:35:00", "2026-09-10 10:55:00",
+    "2026-09-10 11:10:00"
+  ), tz = "UTC")
+
+  df <- data.frame(
+    timestamp = ts,
+    station_id = "ST-TEST",
+    air_temp = c(20, 21, 20, 22),
+    humidity = c(50, 52, 51, 53),
+    pressure = c(1012, 1012, 1013, 1013),
+    wind_avg = c(2, 3, 2, 4),
+    wind_gust = c(3, 5, 4, 6),
+    precip = c(0.0, 0.2, 0.4, 0.1)
+  )
+
+  out <- aggregate_tempest_hourly(df)
+
+  expect_equal(nrow(out), 2)
+  expect_equal(out$tempest_precip[1], 0.4, tolerance = 1e-6)
+  expect_equal(out$tempest_precip[2], 0.0, tolerance = 1e-6)
+})
+
+test_that("build_forecast_accuracy_hourly joins baseline and computes lead buckets", {
+  forecast <- tibble::tibble(
+    station_id = "KRDU",
+    forecast_hour = as.POSIXct(c("2026-09-10 12:00:00", "2026-09-10 12:00:00"), tz = "UTC"),
+    generated_hour = as.POSIXct(c("2026-09-10 06:00:00", "2026-09-09 12:00:00"), tz = "UTC"),
+    lead_hours = c(6, 24),
+    noaa_fcst_temperature_c = c(20, 22)
+  )
+
+  noaa_obs <- tibble::tibble(
+    station_id = "KRDU",
+    hour = as.POSIXct("2026-09-10 12:00:00", tz = "UTC"),
+    noaa_obs_temperature_c = 21
+  )
+
+  tempest <- tibble::tibble(
+    station_id = "ST-TEST",
+    hour = as.POSIXct("2026-09-10 12:00:00", tz = "UTC"),
+    tempest_air_temp = 20.5
+  )
+
+  out <- build_forecast_accuracy_hourly(
+    forecast,
+    noaa_obs,
+    tempest,
+    baseline = "noaa_obs",
+    variable_name = "temperature"
+  )
+
+  expect_equal(nrow(out), 2)
+  expect_true(all(c("error", "abs_error", "lead_bucket") %in% names(out)))
+  expect_true(all(out$lead_bucket %in% c("0-6h", "12-24h")))
+})
+
+# ==============================================================================
 # RUN TESTS
 # ==============================================================================
 
