@@ -914,6 +914,324 @@ plot_forecast_accuracy_plotly <- function(df,
     config(displayModeBar = TRUE, displaylogo = FALSE)
 }
 
+# ------------------------------------------------------------------------------
+#' Plot NOAA Timeseries (Plotly)
+#'
+#' @param df Data frame with timestamp and value
+#' @param title Chart title
+#' @param unit_label Unit label
+#'
+#' @return Plotly object
+#' @export
+# ------------------------------------------------------------------------------
+plot_noaa_timeseries_plotly <- function(df,
+                                        title = "NOAA Observations",
+                                        unit_label = "°C") {
+  if (nrow(df) == 0) {
+    return(plotly_empty_message("No NOAA observations available"))
+  }
+
+  plot_ly(df, x = ~timestamp, y = ~value, type = "scatter", mode = "lines", height = 320) |>
+    add_trace(
+      name = "NOAA",
+      line = list(color = "rgb(69, 123, 157)", width = 2),
+      hovertemplate = paste0("<b>Value</b>: %{y:.2f} ", unit_label, "<extra></extra>")
+    ) |>
+    layout(
+      title = list(text = title, x = 0),
+      xaxis = list(title = "", showgrid = TRUE, gridcolor = "rgba(233, 236, 239, 0.8)"),
+      yaxis = list(title = unit_label, showgrid = TRUE, gridcolor = "rgba(233, 236, 239, 0.8)"),
+      margin = list(t = 45, b = 70),
+      paper_bgcolor = "rgba(0,0,0,0)",
+      plot_bgcolor = "#FFFFFF"
+    ) |>
+    config(displayModeBar = TRUE, displaylogo = FALSE)
+}
+
+# ------------------------------------------------------------------------------
+#' Plot NOAA Source Mix (Plotly)
+#'
+#' @param df Data frame with source and n
+#'
+#' @return Plotly object
+#' @export
+# ------------------------------------------------------------------------------
+plot_noaa_source_mix_plotly <- function(df) {
+  if (nrow(df) == 0) {
+    return(plotly_empty_message("No NOAA source data available"))
+  }
+
+  plot_ly(df, x = ~ reorder(source, n), y = ~n, type = "bar", height = 320) |>
+    add_trace(
+      marker = list(color = "rgb(42, 157, 143)"),
+      hovertemplate = "<b>%{x}</b><br>Rows: %{y}<extra></extra>",
+      showlegend = FALSE
+    ) |>
+    layout(
+      title = list(text = "Rows by NOAA Source", x = 0),
+      xaxis = list(title = "Source", showgrid = FALSE),
+      yaxis = list(title = "Rows", showgrid = TRUE, gridcolor = "rgba(233, 236, 239, 0.8)"),
+      margin = list(t = 45, b = 80),
+      paper_bgcolor = "rgba(0,0,0,0)",
+      plot_bgcolor = "#FFFFFF"
+    ) |>
+    config(displayModeBar = TRUE, displaylogo = FALSE)
+}
+
+# ------------------------------------------------------------------------------
+#' Plot Latest Forecast Run Trajectory (Plotly)
+#'
+#' @param df Data frame with timestamp and value
+#' @param variable_label Variable display label
+#' @param unit_label Unit label
+#'
+#' @return Plotly object
+#' @export
+# ------------------------------------------------------------------------------
+plot_forecast_latest_run_plotly <- function(df,
+                                            variable_label = "Temperature",
+                                            unit_label = "°C") {
+  if (nrow(df) == 0) {
+    return(plotly_empty_message("No latest forecast trajectory available"))
+  }
+
+  plot_ly(df, x = ~timestamp, y = ~value, type = "scatter", mode = "lines+markers", height = 320) |>
+    add_trace(
+      name = "Latest Run",
+      line = list(color = "rgb(42, 157, 143)", width = 2),
+      marker = list(size = 5),
+      hovertemplate = paste0("<b>Forecast</b>: %{y:.2f} ", unit_label, "<extra></extra>")
+    ) |>
+    layout(
+      title = list(text = paste0(variable_label, ": Latest Forecast Run"), x = 0),
+      xaxis = list(title = "Valid Time", showgrid = TRUE, gridcolor = "rgba(233, 236, 239, 0.8)"),
+      yaxis = list(title = unit_label, showgrid = TRUE, gridcolor = "rgba(233, 236, 239, 0.8)"),
+      margin = list(t = 45, b = 70),
+      paper_bgcolor = "rgba(0,0,0,0)",
+      plot_bgcolor = "#FFFFFF"
+    ) |>
+    config(displayModeBar = TRUE, displaylogo = FALSE)
+}
+
+# ------------------------------------------------------------------------------
+#' Plot Forecast Spread Across Runs (Plotly)
+#'
+#' @param df Data frame with forecast_hour, p10, p50, p90, and n
+#' @param variable_label Variable display label
+#' @param unit_label Unit label
+#'
+#' @return Plotly object
+#' @export
+# ------------------------------------------------------------------------------
+plot_forecast_spread_plotly <- function(df,
+                                        variable_label = "Temperature",
+                                        unit_label = "°C") {
+  if (nrow(df) == 0) {
+    return(plotly_empty_message("No forecast spread data available"))
+  }
+
+  plot_ly(df, x = ~forecast_hour, y = ~p90, type = "scatter", mode = "lines", height = 320) |>
+    add_trace(
+      y = ~p10,
+      line = list(color = "transparent"),
+      hoverinfo = "skip",
+      showlegend = FALSE
+    ) |>
+    add_trace(
+      y = ~p90,
+      fill = "tonexty",
+      fillcolor = "rgba(69, 123, 157, 0.2)",
+      line = list(color = "transparent"),
+      name = "10-90% band",
+      hovertemplate = paste0(
+        "<b>P10</b>: %{customdata[0]:.2f} ", unit_label, "<br>",
+        "<b>P90</b>: %{y:.2f} ", unit_label, "<br>",
+        "<b>Runs</b>: %{customdata[1]}<extra></extra>"
+      ),
+      customdata = ~ cbind(p10, n)
+    ) |>
+    add_trace(
+      y = ~p50,
+      mode = "lines",
+      line = list(color = "rgb(29, 53, 87)", width = 2),
+      name = "Median",
+      hovertemplate = paste0("<b>Median</b>: %{y:.2f} ", unit_label, "<extra></extra>")
+    ) |>
+    layout(
+      title = list(text = paste0(variable_label, ": Cross-Run Spread"), x = 0),
+      xaxis = list(title = "Valid Time", showgrid = TRUE, gridcolor = "rgba(233, 236, 239, 0.8)"),
+      yaxis = list(title = unit_label, showgrid = TRUE, gridcolor = "rgba(233, 236, 239, 0.8)"),
+      legend = list(orientation = "h", y = -0.2),
+      margin = list(t = 45, b = 70),
+      paper_bgcolor = "rgba(0,0,0,0)",
+      plot_bgcolor = "#FFFFFF"
+    ) |>
+    config(displayModeBar = TRUE, displaylogo = FALSE)
+}
+
+# ------------------------------------------------------------------------------
+#' Plot Forecast Precipitation Probability (Plotly)
+#'
+#' @param df Data frame with timestamp and probability
+#'
+#' @return Plotly object
+#' @export
+# ------------------------------------------------------------------------------
+plot_forecast_probability_plotly <- function(df) {
+  if (nrow(df) == 0) {
+    return(plotly_empty_message("No precipitation probability data available"))
+  }
+
+  plot_ly(df, x = ~timestamp, y = ~probability, type = "scatter", mode = "lines+markers", height = 320) |>
+    add_trace(
+      name = "PoP",
+      line = list(color = "rgb(29, 53, 87)", width = 2),
+      marker = list(size = 5),
+      hovertemplate = "<b>PoP</b>: %{y:.0f}%<extra></extra>",
+      showlegend = FALSE
+    ) |>
+    layout(
+      title = list(text = "Precipitation Probability", x = 0),
+      xaxis = list(title = "Valid Time", showgrid = TRUE, gridcolor = "rgba(233, 236, 239, 0.8)"),
+      yaxis = list(title = "Probability (%)", range = c(0, 100), showgrid = TRUE, gridcolor = "rgba(233, 236, 239, 0.8)"),
+      margin = list(t = 45, b = 70),
+      paper_bgcolor = "rgba(0,0,0,0)",
+      plot_bgcolor = "#FFFFFF"
+    ) |>
+    config(displayModeBar = TRUE, displaylogo = FALSE)
+}
+
+# ------------------------------------------------------------------------------
+#' Plot Forecast Provider Comparison (Plotly)
+#'
+#' @param df Data frame with forecast_hour, noaa_value, openmeteo_value
+#' @param variable_label Variable display label
+#' @param unit_label Unit label
+#'
+#' @return Plotly object
+#' @export
+# ------------------------------------------------------------------------------
+plot_forecast_provider_compare_plotly <- function(df,
+                                                  variable_label = "Temperature",
+                                                  unit_label = "°C") {
+  if (nrow(df) == 0) {
+    return(plotly_empty_message("No overlapping NOAA/Open-Meteo forecast points"))
+  }
+
+  plot_ly(df, x = ~forecast_hour, height = 320) |>
+    add_lines(
+      y = ~noaa_value,
+      name = "NOAA",
+      line = list(color = "rgb(42, 157, 143)", width = 2),
+      hovertemplate = paste0("<b>NOAA</b>: %{y:.2f} ", unit_label, "<extra></extra>")
+    ) |>
+    add_lines(
+      y = ~openmeteo_value,
+      name = "Open-Meteo",
+      line = list(color = "rgb(69, 123, 157)", width = 2, dash = "dot"),
+      hovertemplate = paste0("<b>Open-Meteo</b>: %{y:.2f} ", unit_label, "<extra></extra>")
+    ) |>
+    layout(
+      title = list(text = paste0(variable_label, ": NOAA vs Open-Meteo"), x = 0),
+      xaxis = list(title = "Valid Time", showgrid = TRUE, gridcolor = "rgba(233, 236, 239, 0.8)"),
+      yaxis = list(title = unit_label, showgrid = TRUE, gridcolor = "rgba(233, 236, 239, 0.8)"),
+      legend = list(orientation = "h", y = -0.2),
+      hovermode = "x unified",
+      margin = list(t = 45, b = 70),
+      paper_bgcolor = "rgba(0,0,0,0)",
+      plot_bgcolor = "#FFFFFF"
+    ) |>
+    config(displayModeBar = TRUE, displaylogo = FALSE)
+}
+
+# ------------------------------------------------------------------------------
+#' Plot Forecast Map Snapshot (Plotly)
+#'
+#' @param df Data frame with latitude, longitude, and value
+#' @param variable_label Variable display label
+#' @param unit_label Unit label
+#'
+#' @return Plotly object
+#' @export
+# ------------------------------------------------------------------------------
+plot_forecast_map_plotly <- function(df,
+                                     variable_label = "Temperature",
+                                     unit_label = "°C",
+                                     map_label = "Selected Area",
+                                     sample_df = NULL) {
+  if (nrow(df) == 0) {
+    return(plotly_empty_message("No forecast map data available"))
+  }
+
+  lat_center <- mean(df$latitude, na.rm = TRUE)
+  lon_center <- mean(df$longitude, na.rm = TRUE)
+
+  lat_span <- max(df$latitude, na.rm = TRUE) - min(df$latitude, na.rm = TRUE)
+  lon_span <- max(df$longitude, na.rm = TRUE) - min(df$longitude, na.rm = TRUE)
+  span <- max(lat_span, lon_span)
+
+  zoom <- if (span <= 0.15) {
+    9
+  } else if (span <= 0.35) {
+    8
+  } else if (span <= 0.8) {
+    7
+  } else {
+    6
+  }
+
+  map_plot <- plot_ly(
+    df,
+    type = "densitymapbox",
+    lon = ~longitude,
+    lat = ~latitude,
+    z = ~value,
+    radius = 22,
+    colorscale = "Viridis",
+    colorbar = list(title = unit_label),
+    hovertemplate = paste0(
+      "<b>", variable_label, "</b>: %{z:.2f} ", unit_label, "<br>",
+      "Lat: %{lat:.3f}<br>",
+      "Lon: %{lon:.3f}<extra></extra>"
+    )
+  )
+
+  if (!is.null(sample_df) && nrow(sample_df) > 0) {
+    map_plot <- map_plot |>
+      add_trace(
+        data = sample_df,
+        type = "scattermapbox",
+        mode = "markers",
+        lon = ~longitude,
+        lat = ~latitude,
+        marker = list(size = 5, color = "rgba(20,20,20,0.55)"),
+        name = "Source points",
+        hovertemplate = paste0(
+          "<b>Source Sample</b><br>",
+          variable_label, ": %{customdata:.2f} ", unit_label, "<br>",
+          "Lat: %{lat:.3f}<br>",
+          "Lon: %{lon:.3f}<extra></extra>"
+        ),
+        customdata = ~value,
+        showlegend = FALSE
+      )
+  }
+
+  map_plot |>
+    layout(
+      title = list(text = paste0("Regional ", variable_label, " Snapshot — ", map_label), x = 0),
+      mapbox = list(
+        style = "open-street-map",
+        zoom = zoom,
+        center = list(lat = lat_center, lon = lon_center)
+      ),
+      margin = list(t = 45, b = 20),
+      paper_bgcolor = "rgba(0,0,0,0)",
+      plot_bgcolor = "#FFFFFF"
+    ) |>
+    config(displayModeBar = TRUE, displaylogo = FALSE)
+}
+
 # ==============================================================================
 # HELPER FUNCTIONS
 # ==============================================================================

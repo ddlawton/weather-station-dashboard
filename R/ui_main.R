@@ -64,16 +64,12 @@ build_dashboard_ui <- function() {
           menuItem(
             "NOAA Data",
             tabName = "noaa_data",
-            icon = icon("cloud"),
-            badgeLabel = "Soon",
-            badgeColor = "yellow"
+            icon = icon("cloud")
           ),
           menuItem(
             "Forecast",
             tabName = "forecast",
-            icon = icon("calendar-alt"),
-            badgeLabel = "Soon",
-            badgeColor = "yellow"
+            icon = icon("calendar-alt")
           ),
           menuItem(
             "Unified View",
@@ -298,34 +294,251 @@ build_dashboard_ui <- function() {
           ),
 
           # ======================================================================
-          # NOAA DATA TAB (Placeholder)
+          # NOAA DATA TAB
           # ======================================================================
           tabItem(
             tabName = "noaa_data",
-            coming_soon_panel(
-              title = "NOAA Data Integration",
-              description = paste(
-                "Integration with NOAA weather data is coming soon.",
-                "This will include official observations, historical data,",
-                "and climate normals for your area."
+            fluidRow(
+              shinydashboard::box(
+                title = tagList(icon("sliders-h"), "NOAA Controls"),
+                width = 12,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                column(
+                  width = 4,
+                  selectInput(
+                    inputId = "noaa_source_filter",
+                    label = "Data Source",
+                    choices = c("NWS" = "NWS", "All Sources" = "all"),
+                    selected = "NWS"
+                  )
+                ),
+                column(
+                  width = 4,
+                  selectInput(
+                    inputId = "noaa_variable",
+                    label = "Variable",
+                    choices = c(
+                      "Temperature" = "temperature",
+                      "Humidity" = "humidity",
+                      "Pressure" = "pressure",
+                      "Wind (Avg)" = "wind_avg",
+                      "Wind (Gust)" = "wind_gust"
+                    ),
+                    selected = "temperature"
+                  )
+                ),
+                column(
+                  width = 4,
+                  br(),
+                  htmlOutput("noaa_data_status")
+                )
+              )
+            ),
+            fluidRow(
+              uiOutput("noaa_summary_boxes")
+            ),
+            fluidRow(
+              shinydashboard::box(
+                title = tagList(icon("chart-line"), "NOAA Hourly Observations"),
+                width = 8,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                withSpinner(
+                  plotlyOutput("noaa_observation_plot", height = "330px"),
+                  type = 6,
+                  color = "#457B9D"
+                )
               ),
-              icon_name = "cloud"
+              shinydashboard::box(
+                title = tagList(icon("stream"), "NOAA Source Mix"),
+                width = 4,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                withSpinner(
+                  plotlyOutput("noaa_source_mix_plot", height = "330px"),
+                  type = 6,
+                  color = "#2A9D8F"
+                )
+              )
+            ),
+            fluidRow(
+              shinydashboard::box(
+                title = tagList(icon("balance-scale"), "NOAA vs Tempest (Same Variable)"),
+                width = 12,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                withSpinner(
+                  plotlyOutput("noaa_vs_tempest_plot", height = "330px"),
+                  type = 6,
+                  color = "#E63946"
+                )
+              )
             )
           ),
 
           # ======================================================================
-          # FORECAST TAB (Placeholder)
+          # FORECAST TAB
           # ======================================================================
           tabItem(
             tabName = "forecast",
-            coming_soon_panel(
-              title = "Weather Forecast",
-              description = paste(
-                "Weather forecast integration is coming soon.",
-                "This will include multi-day forecasts, hourly predictions,",
-                "and severe weather alerts."
+            fluidRow(
+              shinydashboard::box(
+                title = tagList(icon("sliders-h"), "Forecast Controls"),
+                width = 12,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                column(
+                  width = 4,
+                  selectInput(
+                    inputId = "forecast_variable",
+                    label = "Variable",
+                    choices = c(
+                      "Temperature" = "temperature",
+                      "Humidity" = "humidity",
+                      "Pressure" = "pressure",
+                      "Wind (Avg)" = "wind_avg",
+                      "Wind (Gust)" = "wind_gust"
+                    ),
+                    selected = "temperature"
+                  )
+                ),
+                column(
+                  width = 3,
+                  selectInput(
+                    inputId = "forecast_provider",
+                    label = "Forecast Provider",
+                    choices = c(
+                      "NOAA" = "noaa",
+                      "Open-Meteo" = "openmeteo",
+                      "Blend (NOAA + Open-Meteo)" = "blend"
+                    ),
+                    selected = "blend"
+                  )
+                ),
+                column(
+                  width = 5,
+                  sliderInput(
+                    inputId = "forecast_horizon_hours",
+                    label = "Forecast Horizon (hours)",
+                    min = 12,
+                    max = 240,
+                    value = c(12, 168),
+                    step = 6,
+                    width = "100%"
+                  )
+                ),
+                column(
+                  width = 6,
+                  textInput(
+                    inputId = "forecast_map_location",
+                    label = "Map Location (US city/state or ZIP)",
+                    value = forecast_map_defaults$location_query,
+                    placeholder = "e.g. Austin, TX or 27513"
+                  )
+                ),
+                column(
+                  width = 6,
+                  selectInput(
+                    inputId = "forecast_radar_layer",
+                    label = "Map Layer",
+                    choices = c(
+                      "Radar" = "radar",
+                      "Clouds" = "clouds",
+                      "Satellite" = "satellite"
+                    ),
+                    selected = "radar"
+                  )
+                ),
+                column(
+                  width = 12,
+                  htmlOutput("forecast_map_location_status")
+                )
+              )
+            ),
+            fluidRow(
+              uiOutput("forecast_summary_boxes")
+            ),
+            fluidRow(
+              shinydashboard::box(
+                title = tagList(icon("route"), "Latest Run Trajectory"),
+                width = 8,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                withSpinner(
+                  plotlyOutput("forecast_latest_run_plot", height = "330px"),
+                  type = 6,
+                  color = "#2A9D8F"
+                )
               ),
-              icon_name = "calendar-alt"
+              shinydashboard::box(
+                title = tagList(icon("align-left"), "Latest Weather Summary"),
+                width = 4,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                tableOutput("forecast_summary_table")
+              )
+            ),
+            fluidRow(
+              shinydashboard::box(
+                title = tagList(icon("satellite-dish"), "Live Weather / Cloud Radar Map"),
+                width = 12,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                withSpinner(
+                  uiOutput("forecast_radar_map"),
+                  type = 6,
+                  color = "#6C757D"
+                )
+              )
+            ),
+            fluidRow(
+              shinydashboard::box(
+                title = tagList(icon("layer-group"), "Forecast Spread Across Runs"),
+                width = 8,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                withSpinner(
+                  plotlyOutput("forecast_spread_plot", height = "330px"),
+                  type = 6,
+                  color = "#457B9D"
+                )
+              ),
+              shinydashboard::box(
+                title = tagList(icon("code-branch"), "Provider Comparison"),
+                width = 4,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                withSpinner(
+                  plotlyOutput("forecast_provider_compare_plot", height = "330px"),
+                  type = 6,
+                  color = "#1D3557"
+                )
+              )
+            ),
+            fluidRow(
+              shinydashboard::box(
+                title = tagList(icon("cloud-rain"), "Precipitation Probability (Latest Run)"),
+                width = 12,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                withSpinner(
+                  plotlyOutput("forecast_precip_probability_plot", height = "300px"),
+                  type = 6,
+                  color = "#1D3557"
+                )
+              )
             )
           ),
 
