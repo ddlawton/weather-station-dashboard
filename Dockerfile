@@ -23,6 +23,11 @@ RUN apt-get update && apt-get install -y \
     libharfbuzz-dev \
     libfribidi-dev \
     pandoc \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    libxml2-dev \
+    libuv1-dev \
+    cmake \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
