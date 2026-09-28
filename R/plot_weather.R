@@ -783,6 +783,137 @@ plot_precipitation_ggplot <- function(df, title = "Precipitation") {
     theme_weather()
 }
 
+# ------------------------------------------------------------------------------
+#' Plot Unified Observation Delta (Plotly)
+#'
+#' @param df Comparison data with hour, noaa_value, tempest_value
+#' @param variable_label Label for chart title
+#' @param unit_label Unit label for hover and axis
+#'
+#' @return Plotly object
+#' @export
+# ------------------------------------------------------------------------------
+plot_unified_obs_delta_plotly <- function(df,
+                                          variable_label = "Temperature",
+                                          unit_label = "°C") {
+  if (nrow(df) == 0) {
+    return(plotly_empty_message("No overlapping NOAA and Tempest observations"))
+  }
+
+  plot_ly(df, x = ~hour, height = 320) |>
+    add_lines(
+      y = ~noaa_value,
+      name = "NOAA Obs",
+      line = list(color = "rgb(69, 123, 157)", width = 2),
+      hovertemplate = paste0("<b>NOAA</b>: %{y:.2f} ", unit_label, "<extra></extra>")
+    ) |>
+    add_lines(
+      y = ~tempest_value,
+      name = "Tempest",
+      line = list(color = "rgb(230, 57, 70)", width = 2),
+      hovertemplate = paste0("<b>Tempest</b>: %{y:.2f} ", unit_label, "<extra></extra>")
+    ) |>
+    layout(
+      title = list(text = paste0(variable_label, ": NOAA vs Tempest (Hourly)"), x = 0),
+      xaxis = list(title = "", showgrid = TRUE, gridcolor = "rgba(233, 236, 239, 0.8)"),
+      yaxis = list(title = unit_label, showgrid = TRUE, gridcolor = "rgba(233, 236, 239, 0.8)"),
+      hovermode = "x unified",
+      legend = list(orientation = "h", y = -0.2),
+      margin = list(t = 45, b = 70),
+      paper_bgcolor = "rgba(0,0,0,0)",
+      plot_bgcolor = "#FFFFFF"
+    ) |>
+    config(displayModeBar = TRUE, displaylogo = FALSE)
+}
+
+# ------------------------------------------------------------------------------
+#' Plot Forecast Evolution for a Target Hour (Plotly)
+#'
+#' @param df Forecast accuracy data with lead_hours and forecast_value
+#' @param variable_label Label for chart title
+#' @param unit_label Unit label
+#'
+#' @return Plotly object
+#' @export
+# ------------------------------------------------------------------------------
+plot_forecast_evolution_plotly <- function(df,
+                                           variable_label = "Temperature",
+                                           unit_label = "°C") {
+  if (nrow(df) == 0) {
+    return(plotly_empty_message("No forecast history for selected hour"))
+  }
+
+  plot_ly(df, x = ~lead_hours, y = ~forecast_value, type = "scatter", mode = "lines+markers", height = 320) |>
+    add_trace(
+      name = "Forecast",
+      line = list(color = "rgb(42, 157, 143)", width = 2),
+      marker = list(size = 6),
+      hovertemplate = paste0(
+        "<b>Lead</b>: %{x:.0f} h<br>",
+        "<b>Forecast</b>: %{y:.2f} ", unit_label, "<extra></extra>"
+      )
+    ) |>
+    layout(
+      title = list(text = paste0(variable_label, ": Forecast Evolution"), x = 0),
+      xaxis = list(title = "Lead Time (hours before valid time)", autorange = "reversed", showgrid = TRUE, gridcolor = "rgba(233, 236, 239, 0.8)"),
+      yaxis = list(title = unit_label, showgrid = TRUE, gridcolor = "rgba(233, 236, 239, 0.8)"),
+      margin = list(t = 45, b = 70),
+      paper_bgcolor = "rgba(0,0,0,0)",
+      plot_bgcolor = "#FFFFFF"
+    ) |>
+    config(displayModeBar = TRUE, displaylogo = FALSE)
+}
+
+# ------------------------------------------------------------------------------
+#' Plot Forecast Accuracy by Lead Bucket (Plotly)
+#'
+#' @param df Forecast accuracy data with lead_bucket and abs_error
+#' @param variable_label Label for chart title
+#' @param unit_label Unit label
+#'
+#' @return Plotly object
+#' @export
+# ------------------------------------------------------------------------------
+plot_forecast_accuracy_plotly <- function(df,
+                                          variable_label = "Temperature",
+                                          unit_label = "°C") {
+  if (nrow(df) == 0) {
+    return(plotly_empty_message("No forecast/observation overlap for selected baseline"))
+  }
+
+  bucket_order <- c("0-6h", "6-12h", "12-24h", "1-3d", "3-7d", ">7d")
+
+  summary_df <- df |>
+    mutate(lead_bucket = factor(lead_bucket, levels = bucket_order)) |>
+    group_by(lead_bucket) |>
+    summarise(
+      mae = mean(abs_error, na.rm = TRUE),
+      n = n(),
+      .groups = "drop"
+    )
+
+  plot_ly(summary_df, x = ~lead_bucket, y = ~mae, type = "bar", height = 320) |>
+    add_trace(
+      marker = list(color = "rgb(244, 162, 97)"),
+      hovertemplate = paste0(
+        "<b>Lead Bucket</b>: %{x}<br>",
+        "<b>MAE</b>: %{y:.2f} ", unit_label, "<br>",
+        "<b>Samples</b>: %{customdata}<extra></extra>"
+      ),
+      customdata = ~n,
+      name = "MAE"
+    ) |>
+    layout(
+      title = list(text = paste0(variable_label, ": Forecast MAE by Lead Time"), x = 0),
+      xaxis = list(title = "Lead Bucket", showgrid = FALSE),
+      yaxis = list(title = paste0("MAE (", unit_label, ")"), showgrid = TRUE, gridcolor = "rgba(233, 236, 239, 0.8)"),
+      margin = list(t = 45, b = 70),
+      paper_bgcolor = "rgba(0,0,0,0)",
+      plot_bgcolor = "#FFFFFF"
+    ) |>
+    config(displayModeBar = TRUE, displaylogo = FALSE)
+}
+
 # ==============================================================================
 # HELPER FUNCTIONS
 # ==============================================================================

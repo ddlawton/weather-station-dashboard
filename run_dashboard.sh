@@ -290,7 +290,8 @@ DB_PASSWORD=your_password_here
 
 # Optional: Override database configuration
 # Uncomment and modify if needed
-#DB_HOST=192.168.50.134
+# When running in Docker on the same host as the DB, use localhost or 127.0.0.1
+#DB_HOST=localhost
 #DB_PORT=5432
 #DB_NAME=weatherdata
 #DB_USER=dlawton

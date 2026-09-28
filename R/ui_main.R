@@ -69,9 +69,7 @@ build_dashboard_ui <- function() {
           menuItem(
             "Unified View",
             tabName = "unified",
-            icon = icon("layer-group"),
-            badgeLabel = "Soon",
-            badgeColor = "yellow"
+            icon = icon("layer-group")
           ),
           hr(),
 
@@ -287,14 +285,111 @@ build_dashboard_ui <- function() {
           # ======================================================================
           tabItem(
             tabName = "unified",
-            coming_soon_panel(
-              title = "Unified Data View",
-              description = paste(
-                "The unified view will overlay data from your weather station,",
-                "NOAA observations, and forecast data for easy comparison",
-                "and validation of readings."
+            fluidRow(
+              box(
+                title = tagList(icon("sliders-h"), "Unified Comparison Controls"),
+                width = 12,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                fluidRow(
+                  column(
+                    width = 3,
+                    radioButtons(
+                      inputId = "unified_baseline",
+                      label = "Baseline",
+                      choices = c(
+                        "Compare to NOAA Obs" = "noaa_obs",
+                        "Compare to Tempest" = "tempest"
+                      ),
+                      selected = "noaa_obs",
+                      inline = FALSE
+                    )
+                  ),
+                  column(
+                    width = 3,
+                    selectInput(
+                      inputId = "unified_variable",
+                      label = "Variable",
+                      choices = c(
+                        "Temperature" = "temperature",
+                        "Humidity" = "humidity",
+                        "Pressure" = "pressure",
+                        "Wind (Avg)" = "wind_avg",
+                        "Wind (Gust)" = "wind_gust",
+                        "Precipitation" = "precip"
+                      ),
+                      selected = "temperature"
+                    )
+                  ),
+                  column(
+                    width = 3,
+                    sliderInput(
+                      inputId = "unified_lead_hours",
+                      label = "Forecast Lead Window (hours)",
+                      min = 6,
+                      max = 168,
+                      value = c(6, 168),
+                      step = 6
+                    )
+                  ),
+                  column(
+                    width = 3,
+                    selectInput(
+                      inputId = "unified_noaa_source",
+                      label = "NOAA Source",
+                      choices = c("NWS" = "NWS"),
+                      selected = "NWS"
+                    )
+                  )
+                ),
+                fluidRow(
+                  column(
+                    width = 12,
+                    uiOutput("unified_target_time_selector")
+                  )
+                )
+              )
+            ),
+            fluidRow(
+              box(
+                title = tagList(icon("ruler-combined"), "NOAA vs Tempest (Hourly Observed)"),
+                width = 12,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                withSpinner(
+                  plotlyOutput("unified_obs_delta_plot", height = "330px"),
+                  type = 6,
+                  color = "#457B9D"
+                )
+              )
+            ),
+            fluidRow(
+              box(
+                title = tagList(icon("project-diagram"), "Forecast Evolution (Selected Target Hour)"),
+                width = 6,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                withSpinner(
+                  plotlyOutput("unified_forecast_evolution_plot", height = "330px"),
+                  type = 6,
+                  color = "#2A9D8F"
+                )
               ),
-              icon_name = "layer-group"
+              box(
+                title = tagList(icon("bullseye"), "Forecast Accuracy by Lead Time"),
+                width = 6,
+                solidHeader = FALSE,
+                status = NULL,
+                style = "background-color: #FFFFFF;",
+                withSpinner(
+                  plotlyOutput("unified_accuracy_plot", height = "330px"),
+                  type = 6,
+                  color = "#F4A261"
+                )
+              )
             )
           )
         )

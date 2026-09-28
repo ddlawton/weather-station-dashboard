@@ -14,11 +14,12 @@ library(dplyr)
 #' Constructs the Shiny server function with all reactive elements.
 #'
 #' @param pool Database connection pool (passed from app.R)
+#' @param noaa_pool NOAA database connection pool (optional)
 #'
 #' @return A Shiny server function
 #' @export
 # ------------------------------------------------------------------------------
-build_server <- function(pool) {
+build_server <- function(pool, noaa_pool = NULL) {
   function(input, output, session) {
     # ==========================================================================
     # REACTIVE VALUES
@@ -53,6 +54,10 @@ build_server <- function(pool) {
           duration = NULL
         )
       }
+    })
+
+    noaa_connected <- reactive({
+      check_db_connection(noaa_pool)
     })
 
     # ==========================================================================
@@ -248,6 +253,179 @@ build_server <- function(pool) {
       )
     })
 
+    # ========================================================================
+    # UNIFIED VIEW DATA
+    # ========================================================================
+
+    unified_tempest_raw <- reactive({
+      input$refresh_now
+      req(rv$db_connected)
+      req(time_range())
+
+      range <- time_range()
+
+      tryCatch(
+        {
+          fetch_observations(
+            pool,
+            start_time = range$start,
+            end_time = range$end,
+            station_id = selected_station(),
+            aggregate_interval = NULL
+          )
+        },
+        error = function(e) {
+          tibble()
+        }
+      )
+    })
+
+    unified_tempest_hourly <- reactive({
+      raw <- unified_tempest_raw()
+      if (is.null(raw) || nrow(raw) == 0) {
+        return(tibble())
+      }
+      aggregate_tempest_hourly(raw)
+    })
+
+    unified_noaa_obs_raw <- reactive({
+      input$refresh_now
+      req(time_range())
+
+      if (!noaa_connected()) {
+        return(tibble())
+      }
+
+      range <- time_range()
+      source_filter <- input$unified_noaa_source
+      if (is.null(source_filter) || !nzchar(source_filter)) {
+        source_filter <- "NWS"
+      }
+
+      tryCatch(
+        {
+          fetch_noaa_observations(
+            noaa_pool,
+            start_time = range$start,
+            end_time = range$end,
+            station_id = "KRDU",
+            data_source = source_filter
+          )
+        },
+        error = function(e) {
+          tibble()
+        }
+      )
+    })
+
+    unified_noaa_obs_hourly <- reactive({
+      raw <- unified_noaa_obs_raw()
+      if (is.null(raw) || nrow(raw) == 0) {
+        return(tibble())
+      }
+      aggregate_noaa_obs_hourly(raw, station_id = "KRDU")
+    })
+
+    unified_noaa_forecast_raw <- reactive({
+      input$refresh_now
+      req(time_range())
+
+      if (!noaa_connected()) {
+        return(tibble())
+      }
+
+      range <- time_range()
+
+      tryCatch(
+        {
+          fetch_noaa_forecast_hourly(
+            noaa_pool,
+            start_time = range$start,
+            end_time = range$end,
+            station_id = "KRDU"
+          )
+        },
+        error = function(e) {
+          tibble()
+        }
+      )
+    })
+
+    unified_noaa_forecast_hourly <- reactive({
+      raw <- unified_noaa_forecast_raw()
+      if (is.null(raw) || nrow(raw) == 0) {
+        return(tibble())
+      }
+      prepare_noaa_forecast_hourly(raw, station_id = "KRDU")
+    })
+
+    unified_obs_comparison <- reactive({
+      variable_name <- input$unified_variable
+      if (is.null(variable_name)) {
+        variable_name <- "temperature"
+      }
+
+      build_obs_comparison_hourly(
+        unified_noaa_obs_hourly(),
+        unified_tempest_hourly(),
+        variable_name = variable_name
+      )
+    })
+
+    unified_forecast_accuracy <- reactive({
+      variable_name <- input$unified_variable
+      baseline <- input$unified_baseline
+
+      if (is.null(variable_name)) variable_name <- "temperature"
+      if (is.null(baseline)) baseline <- "noaa_obs"
+
+      data <- build_forecast_accuracy_hourly(
+        unified_noaa_forecast_hourly(),
+        unified_noaa_obs_hourly(),
+        unified_tempest_hourly(),
+        baseline = baseline,
+        variable_name = variable_name
+      )
+
+      lead_window <- input$unified_lead_hours
+      if (!is.null(lead_window) && length(lead_window) == 2) {
+        data <- data |>
+          filter(lead_hours >= lead_window[1], lead_hours <= lead_window[2])
+      }
+
+      data
+    })
+
+    unified_target_hours <- reactive({
+      data <- unified_forecast_accuracy()
+      if (nrow(data) == 0) {
+        return(character(0))
+      }
+
+      format(sort(unique(data$forecast_hour), decreasing = TRUE), "%Y-%m-%d %H:%M:%S")
+    })
+
+    output$unified_target_time_selector <- renderUI({
+      choices <- unified_target_hours()
+
+      if (length(choices) == 0) {
+        return(
+          div(
+            class = "alert alert-info",
+            icon("info-circle"),
+            " No forecast target hours available for current filters."
+          )
+        )
+      }
+
+      selectInput(
+        inputId = "unified_target_hour",
+        label = "Forecast Target Hour",
+        choices = choices,
+        selected = choices[1]
+      )
+    })
+
     # ==========================================================================
     # UI OUTPUTS - CURRENT CONDITIONS
     # ==========================================================================
@@ -426,6 +604,124 @@ build_server <- function(pool) {
       req(historical_data())
       df <- historical_data()
       plot_lightning_plotly(df)
+    })
+
+    # ========================================================================
+    # UI OUTPUTS - UNIFIED VIEW
+    # ========================================================================
+
+    unified_var_info <- reactive({
+      variable <- input$unified_variable
+      units <- input$units_system
+      if (is.null(variable)) variable <- "temperature"
+      if (is.null(units)) units <- "metric"
+
+      label_map <- c(
+        temperature = "Temperature",
+        humidity = "Humidity",
+        pressure = "Pressure",
+        wind_avg = "Wind (Average)",
+        wind_gust = "Wind (Gust)",
+        precip = "Precipitation"
+      )
+
+      unit_metric <- c(
+        temperature = "°C",
+        humidity = "%",
+        pressure = "hPa",
+        wind_avg = "m/s",
+        wind_gust = "m/s",
+        precip = "mm"
+      )
+
+      unit_us <- c(
+        temperature = "°F",
+        humidity = "%",
+        pressure = "hPa",
+        wind_avg = "mph",
+        wind_gust = "mph",
+        precip = "in"
+      )
+
+      list(
+        variable = variable,
+        label = label_map[[variable]],
+        unit = if (units == "us") unit_us[[variable]] else unit_metric[[variable]],
+        units_system = units
+      )
+    })
+
+    convert_unified_values <- function(df, columns, info) {
+      out <- df
+      if (nrow(out) == 0) {
+        return(out)
+      }
+
+      var <- info$variable
+      is_us <- identical(info$units_system, "us")
+
+      for (column_name in columns) {
+        if (!column_name %in% names(out)) {
+          next
+        }
+
+        if (var == "temperature" && is_us) {
+          out[[column_name]] <- convert_temperature(out[[column_name]], from = "C", to = "F")
+        } else if ((var == "wind_avg" || var == "wind_gust") && is_us) {
+          out[[column_name]] <- convert_wind_speed(out[[column_name]], to = "mph")
+        } else if (var == "precip" && is_us) {
+          out[[column_name]] <- convert_precipitation(out[[column_name]], from = "mm", to = "in")
+        }
+      }
+
+      out
+    }
+
+    output$unified_obs_delta_plot <- renderPlotly({
+      info <- unified_var_info()
+      data <- unified_obs_comparison()
+      data <- convert_unified_values(data, c("noaa_value", "tempest_value", "delta_noaa_minus_tempest"), info)
+
+      plot_unified_obs_delta_plotly(
+        data,
+        variable_label = info$label,
+        unit_label = info$unit
+      )
+    })
+
+    output$unified_forecast_evolution_plot <- renderPlotly({
+      info <- unified_var_info()
+      data <- unified_forecast_accuracy()
+
+      req(input$unified_target_hour)
+      target_hour <- suppressWarnings(as.POSIXct(input$unified_target_hour, tz = "UTC"))
+      if (is.na(target_hour)) {
+        return(plotly_empty_message("Invalid target hour selection"))
+      }
+
+      target_data <- data |>
+        filter(forecast_hour == target_hour) |>
+        arrange(desc(lead_hours))
+
+      target_data <- convert_unified_values(target_data, c("forecast_value", "actual_value", "error", "abs_error"), info)
+
+      plot_forecast_evolution_plotly(
+        target_data,
+        variable_label = info$label,
+        unit_label = info$unit
+      )
+    })
+
+    output$unified_accuracy_plot <- renderPlotly({
+      info <- unified_var_info()
+      data <- unified_forecast_accuracy()
+      data <- convert_unified_values(data, c("forecast_value", "actual_value", "error", "abs_error"), info)
+
+      plot_forecast_accuracy_plotly(
+        data,
+        variable_label = info$label,
+        unit_label = info$unit
+      )
     })
 
     # ==========================================================================

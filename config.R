@@ -9,12 +9,22 @@
 # Note: For production, consider using environment variables for sensitive data
 # e.g., Sys.getenv("DB_PASSWORD")
 
+# Tailscale IP (100.85.171.67) is reachable from your Mac for local dev.
+# Docker deployment on TrueNAS: set DB_HOST=localhost in .env
 db_config <- list(
-  host = "192.168.50.134",
-  port = 5432,
-  dbname = "weatherdata",
-  user = "dlawton",
-  password = Sys.getenv("DB_PASSWORD", "YOUR_PASSWORD")
+  host     = Sys.getenv("DB_HOST", "100.85.171.67"),
+  port     = as.integer(Sys.getenv("DB_PORT", "5432")),
+  dbname   = Sys.getenv("DB_NAME", "weatherdata"),
+  user     = Sys.getenv("DB_USER", "dlawton"),
+  password = Sys.getenv("DB_PASSWORD", "dlawton")
+)
+
+noaa_db_config <- list(
+  host     = Sys.getenv("NOAA_DB_HOST", "100.85.171.67"),
+  port     = as.integer(Sys.getenv("NOAA_DB_PORT", "5432")),
+  dbname   = Sys.getenv("NOAA_DB_NAME", "noaa_weather"),
+  user     = Sys.getenv("NOAA_DB_USER", db_config$user),
+  password = Sys.getenv("NOAA_DB_PASSWORD", db_config$password)
 )
 
 # ------------------------------------------------------------------------------
