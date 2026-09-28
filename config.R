@@ -173,6 +173,15 @@ aggregation <- list(
 )
 
 # ------------------------------------------------------------------------------
+# Forecast Map Defaults
+# ------------------------------------------------------------------------------
+forecast_map_defaults <- list(
+  location_query = Sys.getenv("FORECAST_MAP_LOCATION", "Raleigh, NC"),
+  radius_miles = as.numeric(Sys.getenv("FORECAST_MAP_RADIUS_MILES", "35")),
+  lead_hours = as.numeric(Sys.getenv("FORECAST_MAP_LEAD_HOURS", "24"))
+)
+
+# ------------------------------------------------------------------------------
 # Logging Configuration
 # ------------------------------------------------------------------------------
 logging <- list(

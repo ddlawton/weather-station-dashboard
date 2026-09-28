@@ -87,6 +87,24 @@ build_server <- function(pool, noaa_pool = NULL) {
     })
 
     # ==========================================================================
+    # SIDEBAR TAB SWITCHING
+    # ==========================================================================
+
+    # Toggle unified-specific controls based on active tab
+    observe({
+      active_tab <- input$main_tabs
+      is_unified <- identical(active_tab, "unified")
+
+      if (is_unified) {
+        shinyjs::show("unified_controls_sidebar")
+        shinyjs::runjs("document.querySelector('.main-sidebar').setAttribute('data-unified-active', 'true');")
+      } else {
+        shinyjs::hide("unified_controls_sidebar")
+        shinyjs::runjs("document.querySelector('.main-sidebar').setAttribute('data-unified-active', 'false');")
+      }
+    })
+
+    # ==========================================================================
     # TIME WINDOW CALCULATION
     # ==========================================================================
 
@@ -254,35 +272,31 @@ build_server <- function(pool, noaa_pool = NULL) {
     })
 
     # ========================================================================
+    # HELPER FUNCTION FOR DATA FETCHING
+    # ========================================================================
+
+    # Standardized fetch with error handling - reduces duplication
+    safe_fetch <- function(fetch_fn, ...) {
+      tryCatch(
+        fetch_fn(...),
+        error = function(e) tibble()
+      )
+    }
+
+    # ========================================================================
     # UNIFIED VIEW DATA
     # ========================================================================
 
     unified_tempest_raw <- reactive({
       input$refresh_now
-      req(rv$db_connected)
-      req(time_range())
-
+      req(rv$db_connected, time_range())
       range <- time_range()
-
-      tryCatch(
-        {
-          fetch_observations(
-            pool,
-            start_time = range$start,
-            end_time = range$end,
-            station_id = selected_station(),
-            aggregate_interval = NULL
-          )
-        },
-        error = function(e) {
-          tibble()
-        }
-      )
+      safe_fetch(fetch_observations, pool, range$start, range$end, selected_station(), NULL)
     })
 
     unified_tempest_hourly <- reactive({
       raw <- unified_tempest_raw()
-      if (is.null(raw) || nrow(raw) == 0) {
+      if (nrow(raw) == 0) {
         return(tibble())
       }
       aggregate_tempest_hourly(raw)
@@ -290,37 +304,15 @@ build_server <- function(pool, noaa_pool = NULL) {
 
     unified_noaa_obs_raw <- reactive({
       input$refresh_now
-      req(time_range())
-
-      if (!noaa_connected()) {
-        return(tibble())
-      }
-
+      req(time_range(), noaa_connected())
       range <- time_range()
-      source_filter <- input$unified_noaa_source
-      if (is.null(source_filter) || !nzchar(source_filter)) {
-        source_filter <- "NWS"
-      }
-
-      tryCatch(
-        {
-          fetch_noaa_observations(
-            noaa_pool,
-            start_time = range$start,
-            end_time = range$end,
-            station_id = "KRDU",
-            data_source = source_filter
-          )
-        },
-        error = function(e) {
-          tibble()
-        }
-      )
+      source <- input$unified_noaa_source %||% "NWS"
+      safe_fetch(fetch_noaa_observations, noaa_pool, range$start, range$end, "KRDU", source)
     })
 
     unified_noaa_obs_hourly <- reactive({
       raw <- unified_noaa_obs_raw()
-      if (is.null(raw) || nrow(raw) == 0) {
+      if (nrow(raw) == 0) {
         return(tibble())
       }
       aggregate_noaa_obs_hourly(raw, station_id = "KRDU")
@@ -328,35 +320,150 @@ build_server <- function(pool, noaa_pool = NULL) {
 
     unified_noaa_forecast_raw <- reactive({
       input$refresh_now
-      req(time_range())
-
-      if (!noaa_connected()) {
-        return(tibble())
-      }
-
+      req(time_range(), noaa_connected())
       range <- time_range()
-
-      tryCatch(
-        {
-          fetch_noaa_forecast_hourly(
-            noaa_pool,
-            start_time = range$start,
-            end_time = range$end,
-            station_id = "KRDU"
-          )
-        },
-        error = function(e) {
-          tibble()
-        }
-      )
+      safe_fetch(fetch_noaa_forecast_hourly, noaa_pool, range$start, range$end, "KRDU")
     })
 
     unified_noaa_forecast_hourly <- reactive({
       raw <- unified_noaa_forecast_raw()
-      if (is.null(raw) || nrow(raw) == 0) {
+      if (nrow(raw) == 0) {
         return(tibble())
       }
       prepare_noaa_forecast_hourly(raw, station_id = "KRDU")
+    })
+
+    noaa_tab_obs_raw <- reactive({
+      input$refresh_now
+      refresh_rate <- as.numeric(input$refresh_rate)
+      if (!is.na(refresh_rate) && refresh_rate > 0) {
+        invalidateLater(refresh_rate, session)
+      }
+
+      req(noaa_connected(), time_range())
+      range <- time_range()
+
+      source_filter <- input$noaa_source_filter %||% "NWS"
+      source_value <- if (identical(source_filter, "all")) NULL else source_filter
+
+      safe_fetch(
+        fetch_noaa_observations,
+        pool = noaa_pool,
+        start_time = range$start,
+        end_time = range$end,
+        station_id = "KRDU",
+        data_source = source_value
+      )
+    })
+
+    noaa_tab_obs_hourly <- reactive({
+      raw <- noaa_tab_obs_raw()
+      if (nrow(raw) == 0) {
+        return(tibble())
+      }
+      aggregate_noaa_obs_hourly(raw, station_id = "KRDU")
+    })
+
+    forecast_fetch_window <- reactive({
+      horizon <- input$forecast_horizon_hours
+      if (is.null(horizon) || length(horizon) != 2) {
+        horizon <- c(12, 168)
+      }
+
+      list(
+        start = Sys.time() - hours(24),
+        end = Sys.time() + hours(max(horizon, na.rm = TRUE) + 24)
+      )
+    })
+
+    forecast_tab_raw <- reactive({
+      input$refresh_now
+      refresh_rate <- as.numeric(input$refresh_rate)
+      if (!is.na(refresh_rate) && refresh_rate > 0) {
+        invalidateLater(refresh_rate, session)
+      }
+
+      req(noaa_connected(), forecast_fetch_window())
+      window <- forecast_fetch_window()
+
+      safe_fetch(
+        fetch_noaa_forecast_hourly,
+        pool = noaa_pool,
+        start_time = window$start,
+        end_time = window$end,
+        station_id = "KRDU"
+      )
+    })
+
+    forecast_tab_hourly <- reactive({
+      raw <- forecast_tab_raw()
+      if (nrow(raw) == 0) {
+        return(tibble())
+      }
+
+      data <- prepare_noaa_forecast_hourly(raw, station_id = "KRDU")
+      horizon <- input$forecast_horizon_hours
+      if (!is.null(horizon) && length(horizon) == 2) {
+        data <- data |>
+          filter(lead_hours >= horizon[1], lead_hours <= horizon[2])
+      }
+
+      data
+    })
+
+    openmeteo_forecast_raw <- reactive({
+      input$refresh_now
+      refresh_rate <- as.numeric(input$refresh_rate)
+      if (!is.na(refresh_rate) && refresh_rate > 0) {
+        invalidateLater(refresh_rate, session)
+      }
+
+      window <- forecast_fetch_window()
+
+      safe_fetch(
+        fetch_openmeteo_forecast_hourly,
+        latitude = 35.8776,
+        longitude = -78.7875,
+        start_time = window$start,
+        end_time = window$end,
+        timezone = "UTC"
+      )
+    })
+
+    openmeteo_forecast_hourly <- reactive({
+      raw <- openmeteo_forecast_raw()
+      if (nrow(raw) == 0) {
+        return(tibble())
+      }
+
+      horizon <- input$forecast_horizon_hours
+      if (is.null(horizon) || length(horizon) != 2) {
+        horizon <- c(12, 168)
+      }
+
+      raw |>
+        mutate(
+          forecast_hour = floor_date(forecast_time, unit = "hour"),
+          generated_hour = floor_date(generated_at, unit = "hour"),
+          lead_hours = as.numeric(difftime(forecast_hour, generated_hour, units = "hours")),
+          om_fcst_temperature_c = temperature,
+          om_fcst_humidity = relative_humidity,
+          om_fcst_pressure_hpa = pressure,
+          om_fcst_wind_speed = wind_speed,
+          om_fcst_wind_gust = wind_gust,
+          om_fcst_precip_probability = precipitation_probability,
+          om_weather_code = weather_code
+        ) |>
+        filter(lead_hours >= horizon[1], lead_hours <= horizon[2]) |>
+        select(
+          forecast_hour,
+          generated_hour,
+          lead_hours,
+          starts_with("om_fcst_"),
+          om_weather_code,
+          latitude,
+          longitude
+        )
     })
 
     unified_obs_comparison <- reactive({
@@ -425,6 +532,527 @@ build_server <- function(pool, noaa_pool = NULL) {
         selected = choices[1]
       )
     })
+
+    # ==========================================================================
+    # UI OUTPUTS - NOAA / FORECAST TABS
+    # ==========================================================================
+
+    variable_meta <- function(variable, units_system = "metric") {
+      label_map <- c(
+        temperature = "Temperature",
+        humidity = "Humidity",
+        pressure = "Pressure",
+        wind_avg = "Wind (Average)",
+        wind_gust = "Wind (Gust)"
+      )
+
+      unit_metric <- c(
+        temperature = "°C",
+        humidity = "%",
+        pressure = "hPa",
+        wind_avg = "m/s",
+        wind_gust = "m/s"
+      )
+
+      unit_us <- c(
+        temperature = "°F",
+        humidity = "%",
+        pressure = "hPa",
+        wind_avg = "mph",
+        wind_gust = "mph"
+      )
+
+      obs_col_map <- c(
+        temperature = "noaa_obs_temperature_c",
+        humidity = "noaa_obs_humidity",
+        pressure = "noaa_obs_pressure_hpa",
+        wind_avg = "noaa_obs_wind_speed",
+        wind_gust = "noaa_obs_wind_gust"
+      )
+
+      fcst_col_map <- c(
+        temperature = "noaa_fcst_temperature_c",
+        humidity = "noaa_fcst_humidity",
+        pressure = "noaa_fcst_pressure_hpa",
+        wind_avg = "noaa_fcst_wind_speed",
+        wind_gust = "noaa_fcst_wind_gust"
+      )
+
+      fcst_col_map_openmeteo <- c(
+        temperature = "om_fcst_temperature_c",
+        humidity = "om_fcst_humidity",
+        pressure = "om_fcst_pressure_hpa",
+        wind_avg = "om_fcst_wind_speed",
+        wind_gust = "om_fcst_wind_gust"
+      )
+
+      list(
+        variable = variable,
+        label = label_map[[variable]],
+        unit = if (identical(units_system, "us")) unit_us[[variable]] else unit_metric[[variable]],
+        obs_col = obs_col_map[[variable]],
+        fcst_col = fcst_col_map[[variable]],
+        fcst_col_openmeteo = fcst_col_map_openmeteo[[variable]]
+      )
+    }
+
+    resolve_forecast_column <- function(info, provider = "noaa") {
+      if (identical(provider, "openmeteo")) {
+        return(info$fcst_col_openmeteo)
+      }
+      info$fcst_col
+    }
+
+    convert_variable_values <- function(values, variable, units_system) {
+      if (!identical(units_system, "us")) {
+        return(values)
+      }
+
+      if (identical(variable, "temperature")) {
+        return(convert_temperature(values, from = "C", to = "F"))
+      }
+      if (identical(variable, "wind_avg") || identical(variable, "wind_gust")) {
+        return(convert_wind_speed(values, to = "mph"))
+      }
+
+      values
+    }
+
+    output$noaa_data_status <- renderUI({
+      if (isTRUE(noaa_connected())) {
+        div(class = "text-success", icon("check-circle"), " NOAA source connected")
+      } else {
+        div(class = "text-danger", icon("exclamation-triangle"), " NOAA source unavailable")
+      }
+    })
+
+    output$noaa_summary_boxes <- renderUI({
+      raw <- noaa_tab_obs_raw()
+      hourly <- noaa_tab_obs_hourly()
+
+      total_rows <- nrow(raw)
+      latest_ts <- if (total_rows > 0) max(raw$observation_time, na.rm = TRUE) else NA
+      source_count <- if (total_rows > 0 && "data_source" %in% names(raw)) dplyr::n_distinct(raw$data_source) else 0
+      hourly_points <- nrow(hourly)
+
+      tagList(
+        weather_value_box(total_rows, "NOAA Rows", icon = "database", color = "info", width = 3),
+        weather_value_box(
+          if (is.na(latest_ts)) "--" else format(with_tz(latest_ts, timezone_display), "%m-%d %H:%M"),
+          "Latest NOAA Obs",
+          icon = "clock",
+          color = "pressure",
+          width = 3
+        ),
+        weather_value_box(source_count, "Active Sources", icon = "stream", color = "humidity", width = 3),
+        weather_value_box(hourly_points, "Hourly Buckets", icon = "th", color = "wind", width = 3)
+      )
+    })
+
+    output$noaa_observation_plot <- renderPlotly({
+      hourly <- noaa_tab_obs_hourly()
+      variable <- input$noaa_variable %||% "temperature"
+      units <- input$units_system %||% "metric"
+      info <- variable_meta(variable, units)
+
+      if (nrow(hourly) == 0 || !info$obs_col %in% names(hourly)) {
+        return(plotly_empty_message("No NOAA observations available"))
+      }
+
+      plot_df <- hourly |>
+        transmute(
+          timestamp = hour,
+          value = convert_variable_values(.data[[info$obs_col]], variable, units)
+        ) |>
+        filter(!is.na(value)) |>
+        arrange(timestamp)
+
+      plot_noaa_timeseries_plotly(plot_df,
+        title = paste0("NOAA ", info$label, " (Hourly)"),
+        unit_label = info$unit
+      )
+    })
+
+    output$noaa_source_mix_plot <- renderPlotly({
+      raw <- noaa_tab_obs_raw()
+      if (nrow(raw) == 0 || !"data_source" %in% names(raw)) {
+        return(plotly_empty_message("No NOAA source metadata available"))
+      }
+
+      source_df <- raw |>
+        mutate(source = ifelse(is.na(data_source) | data_source == "", "Unknown", data_source)) |>
+        count(source, name = "n") |>
+        arrange(desc(n))
+
+      plot_noaa_source_mix_plotly(source_df)
+    })
+
+    output$noaa_vs_tempest_plot <- renderPlotly({
+      variable <- input$noaa_variable %||% "temperature"
+      units <- input$units_system %||% "metric"
+      info <- variable_meta(variable, units)
+
+      comp <- build_obs_comparison_hourly(
+        noaa_tab_obs_hourly(),
+        unified_tempest_hourly(),
+        variable_name = variable
+      )
+
+      if (nrow(comp) == 0) {
+        return(plotly_empty_message("No overlap between NOAA and Tempest for selected range"))
+      }
+
+      comp <- comp |>
+        mutate(
+          noaa_value = convert_variable_values(noaa_value, variable, units),
+          tempest_value = convert_variable_values(tempest_value, variable, units),
+          delta_noaa_minus_tempest = noaa_value - tempest_value
+        )
+
+      plot_unified_obs_delta_plotly(comp,
+        variable_label = info$label,
+        unit_label = info$unit
+      )
+    })
+
+    latest_noaa_forecast_run <- reactive({
+      data <- forecast_tab_hourly()
+      if (nrow(data) == 0) {
+        return(tibble())
+      }
+
+      latest_run <- max(data$generated_hour, na.rm = TRUE)
+      data |>
+        filter(generated_hour == latest_run) |>
+        arrange(forecast_hour)
+    })
+
+    latest_openmeteo_forecast_run <- reactive({
+      data <- openmeteo_forecast_hourly()
+      if (nrow(data) == 0) {
+        return(tibble())
+      }
+
+      latest_run <- max(data$generated_hour, na.rm = TRUE)
+      data |>
+        filter(generated_hour == latest_run) |>
+        arrange(forecast_hour)
+    })
+
+    latest_selected_forecast <- reactive({
+      provider <- input$forecast_provider %||% "blend"
+      noaa <- latest_noaa_forecast_run()
+      openmeteo <- latest_openmeteo_forecast_run()
+
+      if (identical(provider, "noaa")) {
+        return(noaa)
+      }
+      if (identical(provider, "openmeteo")) {
+        return(openmeteo)
+      }
+
+      if (nrow(noaa) == 0 && nrow(openmeteo) == 0) {
+        return(tibble())
+      }
+      if (nrow(noaa) == 0) {
+        return(openmeteo)
+      }
+      if (nrow(openmeteo) == 0) {
+        return(noaa)
+      }
+
+      noaa |>
+        select(forecast_hour, starts_with("noaa_fcst_")) |>
+        full_join(
+          openmeteo |>
+            select(forecast_hour, starts_with("om_fcst_")),
+          by = "forecast_hour"
+        ) |>
+        mutate(
+          generated_hour = floor_date(Sys.time(), unit = "hour"),
+          lead_hours = as.numeric(difftime(forecast_hour, generated_hour, units = "hours")),
+          noaa_fcst_temperature_c = coalesce((noaa_fcst_temperature_c + om_fcst_temperature_c) / 2, noaa_fcst_temperature_c, om_fcst_temperature_c),
+          noaa_fcst_humidity = coalesce((noaa_fcst_humidity + om_fcst_humidity) / 2, noaa_fcst_humidity, om_fcst_humidity),
+          noaa_fcst_pressure_hpa = coalesce((noaa_fcst_pressure_hpa + om_fcst_pressure_hpa) / 2, noaa_fcst_pressure_hpa, om_fcst_pressure_hpa),
+          noaa_fcst_wind_speed = coalesce((noaa_fcst_wind_speed + om_fcst_wind_speed) / 2, noaa_fcst_wind_speed, om_fcst_wind_speed),
+          noaa_fcst_wind_gust = coalesce((noaa_fcst_wind_gust + om_fcst_wind_gust) / 2, noaa_fcst_wind_gust, om_fcst_wind_gust)
+        ) |>
+        arrange(forecast_hour)
+    })
+
+    output$forecast_summary_boxes <- renderUI({
+      raw <- forecast_tab_raw()
+      prepared_noaa <- forecast_tab_hourly()
+      prepared_openmeteo <- openmeteo_forecast_hourly()
+      latest <- latest_selected_forecast()
+      provider <- input$forecast_provider %||% "blend"
+
+      run_count <- if (nrow(prepared_noaa) > 0) dplyr::n_distinct(prepared_noaa$generated_hour) else 0
+      max_lead <- if (nrow(latest) > 0) round(max(latest$lead_hours, na.rm = TRUE), 0) else NA
+      latest_gen <- if (nrow(latest) > 0) max(latest$generated_hour, na.rm = TRUE) else NA
+      valid_points <- if (identical(provider, "openmeteo")) nrow(prepared_openmeteo) else nrow(raw)
+
+      tagList(
+        weather_value_box(run_count, "NOAA Runs", icon = "history", color = "humidity", width = 3),
+        weather_value_box(
+          if (is.na(max_lead)) "--" else paste0(max_lead, "h"),
+          "Selected Lead Max",
+          icon = "hourglass-half",
+          color = "wind",
+          width = 3
+        ),
+        weather_value_box(
+          if (is.na(latest_gen)) "--" else format(with_tz(latest_gen, timezone_display), "%m-%d %H:%M"),
+          "Selected Run Time",
+          icon = "clock",
+          color = "pressure",
+          width = 3
+        ),
+        weather_value_box(valid_points, paste0("", toupper(substr(provider, 1, 1)), substr(provider, 2, nchar(provider)), " Points"), icon = "project-diagram", color = "info", width = 3)
+      )
+    })
+
+    output$forecast_latest_run_plot <- renderPlotly({
+      variable <- input$forecast_variable %||% "temperature"
+      units <- input$units_system %||% "metric"
+      info <- variable_meta(variable, units)
+      latest <- latest_selected_forecast()
+      provider <- input$forecast_provider %||% "blend"
+      fcst_col <- resolve_forecast_column(info, if (identical(provider, "openmeteo")) "openmeteo" else "noaa")
+
+      if (nrow(latest) == 0 || !fcst_col %in% names(latest)) {
+        return(plotly_empty_message("No forecast data for selected horizon"))
+      }
+
+      plot_df <- latest |>
+        transmute(
+          timestamp = forecast_hour,
+          value = convert_variable_values(.data[[fcst_col]], variable, units)
+        ) |>
+        filter(!is.na(value))
+
+      plot_forecast_latest_run_plotly(plot_df,
+        variable_label = paste0(info$label, " (", tools::toTitleCase(provider), ")"),
+        unit_label = info$unit
+      )
+    })
+
+    output$forecast_spread_plot <- renderPlotly({
+      variable <- input$forecast_variable %||% "temperature"
+      units <- input$units_system %||% "metric"
+      info <- variable_meta(variable, units)
+      data <- forecast_tab_hourly()
+
+      if (nrow(data) == 0 || !info$fcst_col %in% names(data)) {
+        return(plotly_empty_message("No forecast spread data available"))
+      }
+
+      spread_df <- data |>
+        transmute(forecast_hour, value = .data[[info$fcst_col]]) |>
+        filter(!is.na(value)) |>
+        group_by(forecast_hour) |>
+        summarise(
+          p10 = quantile(value, probs = 0.1, na.rm = TRUE),
+          p50 = quantile(value, probs = 0.5, na.rm = TRUE),
+          p90 = quantile(value, probs = 0.9, na.rm = TRUE),
+          n = n(),
+          .groups = "drop"
+        ) |>
+        mutate(
+          p10 = convert_variable_values(p10, variable, units),
+          p50 = convert_variable_values(p50, variable, units),
+          p90 = convert_variable_values(p90, variable, units)
+        )
+
+      plot_forecast_spread_plotly(spread_df,
+        variable_label = info$label,
+        unit_label = info$unit
+      )
+    })
+
+    output$forecast_provider_compare_plot <- renderPlotly({
+      variable <- input$forecast_variable %||% "temperature"
+      units <- input$units_system %||% "metric"
+      info <- variable_meta(variable, units)
+
+      noaa <- latest_noaa_forecast_run()
+      openmeteo <- latest_openmeteo_forecast_run()
+
+      noaa_col <- info$fcst_col
+      om_col <- info$fcst_col_openmeteo
+
+      compare_df <- full_join(
+        noaa |>
+          transmute(forecast_hour, noaa_value = .data[[noaa_col]]),
+        openmeteo |>
+          transmute(forecast_hour, openmeteo_value = .data[[om_col]]),
+        by = "forecast_hour"
+      ) |>
+        mutate(
+          noaa_value = convert_variable_values(noaa_value, variable, units),
+          openmeteo_value = convert_variable_values(openmeteo_value, variable, units)
+        ) |>
+        filter(!is.na(noaa_value) | !is.na(openmeteo_value)) |>
+        arrange(forecast_hour)
+
+      plot_forecast_provider_compare_plotly(compare_df,
+        variable_label = info$label,
+        unit_label = info$unit
+      )
+    })
+
+    output$forecast_precip_probability_plot <- renderPlotly({
+      provider <- input$forecast_provider %||% "blend"
+
+      if (identical(provider, "openmeteo")) {
+        raw <- openmeteo_forecast_raw()
+        if (nrow(raw) == 0 || !"precipitation_probability" %in% names(raw)) {
+          return(plotly_empty_message("No precipitation probability data available"))
+        }
+
+        plot_df <- raw |>
+          mutate(probability = suppressWarnings(as.numeric(precipitation_probability))) |>
+          transmute(timestamp = forecast_time, probability) |>
+          filter(!is.na(probability)) |>
+          arrange(timestamp)
+      } else {
+        raw <- forecast_tab_raw()
+        if (nrow(raw) == 0 || !all(c("generated_at", "forecast_time", "precipitation_probability") %in% names(raw))) {
+          return(plotly_empty_message("No precipitation probability data available"))
+        }
+
+        latest_run <- max(raw$generated_at, na.rm = TRUE)
+        plot_df <- raw |>
+          filter(generated_at == latest_run) |>
+          mutate(
+            probability = suppressWarnings(as.numeric(precipitation_probability)),
+            probability = ifelse(probability <= 1, probability * 100, probability)
+          ) |>
+          transmute(timestamp = forecast_time, probability) |>
+          filter(!is.na(probability)) |>
+          arrange(timestamp)
+      }
+
+      plot_forecast_probability_plotly(plot_df)
+    })
+
+    output$forecast_radar_map <- renderUI({
+      query <- input$forecast_map_location %||% forecast_map_defaults$location_query
+      resolved <- safe_fetch(resolve_us_location, query)
+
+      if (nrow(resolved) == 0) {
+        resolved <- tibble(
+          label = forecast_map_defaults$location_query,
+          latitude = 35.7796,
+          longitude = -78.6382
+        )
+      }
+
+      lat <- as.numeric(resolved$latitude[1])
+      lon <- as.numeric(resolved$longitude[1])
+      layer <- input$forecast_radar_layer %||% "radar"
+      zoom <- 7
+
+      overlay <- switch(layer,
+        radar = "radar",
+        clouds = "clouds",
+        satellite = "satellite",
+        "radar"
+      )
+
+      windy_url <- paste0(
+        "https://embed.windy.com/embed2.html",
+        "?lat=", round(lat, 4),
+        "&lon=", round(lon, 4),
+        "&detailLat=", round(lat, 4),
+        "&detailLon=", round(lon, 4),
+        "&width=1200",
+        "&height=420",
+        "&zoom=", zoom,
+        "&level=surface",
+        "&overlay=", overlay,
+        "&menu=&message=&marker=&calendar=now",
+        "&pressure=&type=map",
+        "&location=coordinates",
+        "&detail=&metricWind=default",
+        "&metricTemp=%C2%B0C",
+        "&radarRange=-1"
+      )
+
+      tags$iframe(
+        src = windy_url,
+        style = "width: 100%; height: 100%; border: 0; border-radius: 6px;",
+        loading = "lazy",
+        referrerpolicy = "no-referrer-when-downgrade"
+      ) |>
+        tags$div(style = "width: min(100%, 760px); aspect-ratio: 1 / 1; margin: 0 auto;")
+    })
+
+    output$forecast_map_location_status <- renderUI({
+      query <- input$forecast_map_location %||% forecast_map_defaults$location_query
+      match <- safe_fetch(resolve_us_location, query)
+      layer <- input$forecast_radar_layer %||% "radar"
+
+      if (nrow(match) == 0) {
+        return(div(class = "text-warning", icon("map-marker-alt"), paste0(" Could not resolve location; using ", forecast_map_defaults$location_query, " fallback")))
+      }
+
+      div(
+        class = "text-muted",
+        icon("map-marker-alt"),
+        paste0(
+          " Map centered on: ", match$label[1],
+          " (", round(match$latitude[1], 3), ", ", round(match$longitude[1], 3), ")",
+          " • Layer: ", tools::toTitleCase(layer)
+        )
+      )
+    })
+
+    output$forecast_summary_table <- renderTable(
+      {
+        provider <- input$forecast_provider %||% "blend"
+        raw <- forecast_tab_raw()
+        om <- openmeteo_forecast_raw()
+
+        if (identical(provider, "openmeteo")) {
+          if (nrow(om) == 0 || !all(c("forecast_time", "temperature", "precipitation_probability") %in% names(om))) {
+            return(NULL)
+          }
+
+          return(
+            om |>
+              arrange(forecast_time) |>
+              transmute(
+                `Valid Time` = format(with_tz(forecast_time, timezone_display), "%m-%d %H:%M"),
+                `Summary` = paste0(
+                  "Temp ", round(temperature, 1), "°C, PoP ",
+                  ifelse(is.na(precipitation_probability), "--", round(precipitation_probability, 0)), "%"
+                )
+              ) |>
+              head(12)
+          )
+        }
+
+        if (nrow(raw) == 0 || !all(c("generated_at", "forecast_time", "weather_summary") %in% names(raw))) {
+          return(NULL)
+        }
+
+        latest_run <- max(raw$generated_at, na.rm = TRUE)
+        raw |>
+          filter(generated_at == latest_run) |>
+          transmute(
+            `Valid Time` = format(with_tz(forecast_time, timezone_display), "%m-%d %H:%M"),
+            `Summary` = weather_summary
+          ) |>
+          filter(!is.na(Summary), nzchar(Summary)) |>
+          distinct() |>
+          head(12)
+      },
+      striped = TRUE,
+      bordered = FALSE,
+      spacing = "xs",
+      hover = TRUE
+    )
 
     # ==========================================================================
     # UI OUTPUTS - CURRENT CONDITIONS
@@ -677,15 +1305,22 @@ build_server <- function(pool, noaa_pool = NULL) {
       out
     }
 
-    output$unified_obs_delta_plot <- renderPlotly({
+    # Helper to render unified plots with standard conversions
+    render_unified_plot <- function(data_reactive, columns, plot_fn) {
       info <- unified_var_info()
-      data <- unified_obs_comparison()
-      data <- convert_unified_values(data, c("noaa_value", "tempest_value", "delta_noaa_minus_tempest"), info)
+      data <- data_reactive()
+      if (nrow(data) == 0) {
+        return(plotly_empty_message("No data available"))
+      }
+      data <- convert_unified_values(data, columns, info)
+      plot_fn(data, variable_label = info$label, unit_label = info$unit)
+    }
 
-      plot_unified_obs_delta_plotly(
-        data,
-        variable_label = info$label,
-        unit_label = info$unit
+    output$unified_obs_delta_plot <- renderPlotly({
+      render_unified_plot(
+        unified_obs_comparison,
+        c("noaa_value", "tempest_value", "delta_noaa_minus_tempest"),
+        plot_unified_obs_delta_plotly
       )
     })
 
@@ -693,34 +1328,35 @@ build_server <- function(pool, noaa_pool = NULL) {
       info <- unified_var_info()
       data <- unified_forecast_accuracy()
 
-      req(input$unified_target_hour)
+      if (nrow(data) == 0) {
+        return(plotly_empty_message("No forecast data available"))
+      }
+      if (is.null(input$unified_target_hour) || !nzchar(input$unified_target_hour)) {
+        return(plotly_empty_message("Select a target hour in the sidebar"))
+      }
+
       target_hour <- suppressWarnings(as.POSIXct(input$unified_target_hour, tz = "UTC"))
       if (is.na(target_hour)) {
-        return(plotly_empty_message("Invalid target hour selection"))
+        return(plotly_empty_message("Invalid target hour"))
       }
 
       target_data <- data |>
         filter(forecast_hour == target_hour) |>
         arrange(desc(lead_hours))
 
-      target_data <- convert_unified_values(target_data, c("forecast_value", "actual_value", "error", "abs_error"), info)
+      if (nrow(target_data) == 0) {
+        return(plotly_empty_message("No forecast data for this target hour"))
+      }
 
-      plot_forecast_evolution_plotly(
-        target_data,
-        variable_label = info$label,
-        unit_label = info$unit
-      )
+      target_data <- convert_unified_values(target_data, c("forecast_value", "actual_value", "error", "abs_error"), info)
+      plot_forecast_evolution_plotly(target_data, variable_label = info$label, unit_label = info$unit)
     })
 
     output$unified_accuracy_plot <- renderPlotly({
-      info <- unified_var_info()
-      data <- unified_forecast_accuracy()
-      data <- convert_unified_values(data, c("forecast_value", "actual_value", "error", "abs_error"), info)
-
-      plot_forecast_accuracy_plotly(
-        data,
-        variable_label = info$label,
-        unit_label = info$unit
+      render_unified_plot(
+        unified_forecast_accuracy,
+        c("forecast_value", "actual_value", "error", "abs_error"),
+        plot_forecast_accuracy_plotly
       )
     })
 

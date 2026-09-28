@@ -802,6 +802,336 @@ fetch_noaa_forecast_hourly <- function(pool,
 }
 
 # ------------------------------------------------------------------------------
+#' Fetch Open-Meteo Hourly Forecast
+#'
+#' Retrieves hourly forecast data from Open-Meteo for a coordinate and date
+#' window. This is used as an external forecast provider for side-by-side
+#' comparison with NOAA guidance.
+#'
+#' @param latitude Numeric latitude
+#' @param longitude Numeric longitude
+#' @param start_time POSIXct start time
+#' @param end_time POSIXct end time
+#' @param timezone Timezone string (default: "UTC")
+#'
+#' @return Tibble of hourly Open-Meteo forecast values
+#' @export
+# ------------------------------------------------------------------------------
+fetch_openmeteo_forecast_hourly <- function(latitude,
+                                            longitude,
+                                            start_time,
+                                            end_time,
+                                            timezone = "UTC") {
+  start_date <- format(as.Date(start_time, tz = timezone), "%Y-%m-%d")
+  end_date <- format(as.Date(end_time, tz = timezone), "%Y-%m-%d")
+
+  api_url <- "https://api.open-meteo.com/v1/forecast"
+
+  response <- tryCatch(
+    {
+      httr::GET(
+        url = api_url,
+        query = list(
+          latitude = latitude,
+          longitude = longitude,
+          hourly = paste(
+            c(
+              "temperature_2m",
+              "relative_humidity_2m",
+              "surface_pressure",
+              "wind_speed_10m",
+              "wind_gusts_10m",
+              "precipitation_probability",
+              "weather_code"
+            ),
+            collapse = ","
+          ),
+          wind_speed_unit = "ms",
+          timezone = timezone,
+          start_date = start_date,
+          end_date = end_date
+        ),
+        httr::timeout(15)
+      )
+    },
+    error = function(e) {
+      NULL
+    }
+  )
+
+  if (is.null(response) || httr::status_code(response) >= 300) {
+    return(tibble())
+  }
+
+  payload <- tryCatch(
+    {
+      jsonlite::fromJSON(httr::content(response, as = "text", encoding = "UTF-8"), simplifyDataFrame = TRUE)
+    },
+    error = function(e) {
+      NULL
+    }
+  )
+
+  if (is.null(payload) || is.null(payload$hourly) || length(payload$hourly$time) == 0) {
+    return(tibble())
+  }
+
+  hourly <- payload$hourly
+
+  n_rows <- length(hourly$time)
+  if (is.null(n_rows) || n_rows == 0) {
+    return(tibble())
+  }
+
+  parse_hourly_time <- suppressWarnings(lubridate::ymd_hm(hourly$time, tz = timezone))
+  if (all(is.na(parse_hourly_time))) {
+    parse_hourly_time <- suppressWarnings(lubridate::ymd_hms(hourly$time, tz = timezone))
+  }
+
+  expand_or_na <- function(values, n) {
+    if (is.null(values)) {
+      return(rep(NA_real_, n))
+    }
+    out <- suppressWarnings(as.numeric(values))
+    if (length(out) == n) {
+      return(out)
+    }
+    rep(NA_real_, n)
+  }
+
+  tibble(
+    provider = "openmeteo",
+    latitude = latitude,
+    longitude = longitude,
+    forecast_time = parse_hourly_time,
+    generated_at = Sys.time(),
+    temperature = expand_or_na(hourly$temperature_2m, n_rows),
+    relative_humidity = expand_or_na(hourly$relative_humidity_2m, n_rows),
+    pressure = expand_or_na(hourly$surface_pressure, n_rows),
+    wind_speed = expand_or_na(hourly$wind_speed_10m, n_rows),
+    wind_gust = expand_or_na(hourly$wind_gusts_10m, n_rows),
+    precipitation_probability = expand_or_na(hourly$precipitation_probability, n_rows),
+    weather_code = expand_or_na(hourly$weather_code, n_rows)
+  ) |>
+    filter(!is.na(forecast_time), forecast_time >= start_time, forecast_time <= end_time)
+}
+
+# ------------------------------------------------------------------------------
+#' Resolve US Location (ZIP or City) to Coordinates
+#'
+#' Accepts either a 5-digit US ZIP code or a city/state query string and
+#' returns a one-row tibble with label + latitude/longitude for map centering.
+#'
+#' @param query Character location query (e.g., "27513" or "Raleigh, NC")
+#'
+#' @return Tibble with columns: query, label, latitude, longitude, source
+#' @export
+# ------------------------------------------------------------------------------
+resolve_us_location <- function(query) {
+  query_clean <- trimws(query %||% "")
+  if (!nzchar(query_clean)) {
+    return(tibble())
+  }
+
+  is_zip <- grepl("^[0-9]{5}$", query_clean)
+
+  if (is_zip) {
+    zip_resp <- tryCatch(
+      {
+        httr::GET(
+          url = paste0("https://api.zippopotam.us/us/", query_clean),
+          httr::timeout(10)
+        )
+      },
+      error = function(e) NULL
+    )
+
+    if (!is.null(zip_resp) && httr::status_code(zip_resp) < 300) {
+      zip_payload <- tryCatch(
+        {
+          jsonlite::fromJSON(httr::content(zip_resp, as = "text", encoding = "UTF-8"), simplifyDataFrame = TRUE)
+        },
+        error = function(e) NULL
+      )
+
+      if (!is.null(zip_payload) && !is.null(zip_payload$places) && nrow(zip_payload$places) > 0) {
+        first_place <- zip_payload$places[1, ]
+        lat <- suppressWarnings(as.numeric(first_place$latitude))
+        lon <- suppressWarnings(as.numeric(first_place$longitude))
+        if (!is.na(lat) && !is.na(lon)) {
+          return(tibble(
+            query = query_clean,
+            label = paste0(first_place$`place name`, ", ", first_place$state, " ", query_clean),
+            latitude = lat,
+            longitude = lon,
+            source = "zippopotam"
+          ))
+        }
+      }
+    }
+  }
+
+  geo_resp <- tryCatch(
+    {
+      httr::GET(
+        url = "https://geocoding-api.open-meteo.com/v1/search",
+        query = list(
+          name = query_clean,
+          count = 1,
+          language = "en",
+          format = "json",
+          countryCode = "US"
+        ),
+        httr::timeout(10)
+      )
+    },
+    error = function(e) NULL
+  )
+
+  if (is.null(geo_resp) || httr::status_code(geo_resp) >= 300) {
+    return(tibble())
+  }
+
+  geo_payload <- tryCatch(
+    {
+      jsonlite::fromJSON(httr::content(geo_resp, as = "text", encoding = "UTF-8"), simplifyDataFrame = TRUE)
+    },
+    error = function(e) NULL
+  )
+
+  if (is.null(geo_payload) || is.null(geo_payload$results) || nrow(geo_payload$results) == 0) {
+    return(tibble())
+  }
+
+  match <- geo_payload$results[1, ]
+  lat <- suppressWarnings(as.numeric(match$latitude))
+  lon <- suppressWarnings(as.numeric(match$longitude))
+
+  if (is.na(lat) || is.na(lon)) {
+    return(tibble())
+  }
+
+  admin1 <- if (!is.null(match$admin1) && nzchar(match$admin1)) paste0(", ", match$admin1) else ""
+  country <- if (!is.null(match$country) && nzchar(match$country)) paste0(", ", match$country) else ""
+
+  tibble(
+    query = query_clean,
+    label = paste0(match$name, admin1, country),
+    latitude = lat,
+    longitude = lon,
+    source = "openmeteo_geocoding"
+  )
+}
+
+# ------------------------------------------------------------------------------
+#' Fetch NWS Hourly Forecast for a Coordinate
+#'
+#' Uses api.weather.gov points -> forecastHourly to retrieve forecast values for
+#' a specific coordinate. Useful as an alternate map datasource.
+#'
+#' @param latitude Numeric latitude
+#' @param longitude Numeric longitude
+#' @param start_time POSIXct start filter time
+#' @param end_time POSIXct end filter time
+#'
+#' @return Tibble with forecast_time and weather variables
+#' @export
+# ------------------------------------------------------------------------------
+fetch_nws_hourly_forecast_point <- function(latitude,
+                                            longitude,
+                                            start_time,
+                                            end_time) {
+  points_url <- sprintf("https://api.weather.gov/points/%.4f,%.4f", latitude, longitude)
+
+  points_resp <- tryCatch(
+    {
+      httr::GET(
+        points_url,
+        httr::add_headers(
+          `User-Agent` = "weather-station-dashboard (contact: local-app)",
+          Accept = "application/geo+json"
+        ),
+        httr::timeout(12)
+      )
+    },
+    error = function(e) NULL
+  )
+
+  if (is.null(points_resp) || httr::status_code(points_resp) >= 300) {
+    return(tibble())
+  }
+
+  points_payload <- tryCatch(
+    {
+      jsonlite::fromJSON(httr::content(points_resp, as = "text", encoding = "UTF-8"), simplifyDataFrame = TRUE)
+    },
+    error = function(e) NULL
+  )
+
+  hourly_url <- points_payload$properties$forecastHourly
+  if (is.null(hourly_url) || !nzchar(hourly_url)) {
+    return(tibble())
+  }
+
+  fcst_resp <- tryCatch(
+    {
+      httr::GET(
+        hourly_url,
+        httr::add_headers(
+          `User-Agent` = "weather-station-dashboard (contact: local-app)",
+          Accept = "application/geo+json"
+        ),
+        httr::timeout(15)
+      )
+    },
+    error = function(e) NULL
+  )
+
+  if (is.null(fcst_resp) || httr::status_code(fcst_resp) >= 300) {
+    return(tibble())
+  }
+
+  fcst_payload <- tryCatch(
+    {
+      jsonlite::fromJSON(httr::content(fcst_resp, as = "text", encoding = "UTF-8"), simplifyDataFrame = TRUE)
+    },
+    error = function(e) NULL
+  )
+
+  periods <- fcst_payload$properties$periods
+  if (is.null(periods) || nrow(periods) == 0) {
+    return(tibble())
+  }
+
+  humidity_vals <- rep(NA_real_, nrow(periods))
+  if ("relativeHumidity.value" %in% names(periods)) {
+    humidity_vals <- suppressWarnings(as.numeric(periods$relativeHumidity.value))
+  }
+
+  temp_vals <- suppressWarnings(as.numeric(periods$temperature))
+  temp_unit <- if ("temperatureUnit" %in% names(periods)) periods$temperatureUnit else rep("F", nrow(periods))
+  temp_c <- ifelse(temp_unit == "F", (temp_vals - 32) * 5 / 9, temp_vals)
+
+  out <- tibble(
+    provider = "nws_hourly",
+    latitude = latitude,
+    longitude = longitude,
+    forecast_time = suppressWarnings(as.POSIXct(periods$startTime, tz = "UTC")),
+    generated_at = Sys.time(),
+    temperature = temp_c,
+    relative_humidity = humidity_vals,
+    pressure = NA_real_,
+    wind_speed = NA_real_,
+    wind_gust = NA_real_,
+    precipitation_probability = if ("probabilityOfPrecipitation.value" %in% names(periods)) suppressWarnings(as.numeric(periods$probabilityOfPrecipitation.value)) else NA_real_,
+    weather_code = NA_real_
+  ) |>
+    filter(!is.na(forecast_time), forecast_time >= start_time, forecast_time <= end_time)
+
+  out
+}
+
+# ------------------------------------------------------------------------------
 #' Get Data Time Range
 #'
 #' Returns the earliest and latest timestamps in the database.

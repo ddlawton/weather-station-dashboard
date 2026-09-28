@@ -11,6 +11,7 @@
 library(shiny)
 library(shinydashboard)
 library(shinycssloaders)
+library(shinyjs)
 
 # Data manipulation
 library(dplyr)
